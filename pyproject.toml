@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eudoxia"
+version = "0.0"
+dependencies = [
+    "numpy",
+    "pandas",
+]
+requires-python = ">=3.12"
+description = "Simulator to test cloud scheduling algorithms"
+readme = "README.md"
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Programming Language :: Python",
+]
+
+
