@@ -1,4 +1,7 @@
 # Eudoxia 
+
+![Tests](https://github.com/BauplanLabs/eudoxia/workflows/Run%20Tests/badge.svg)
+
 Eudoxia provides a simulator for a cloud execution environment. The goal is to evaluate the performance impact of different scheduling policies and algorithm in the cloud without requiring full overhead of implementation or the exorbitant cost of running workloads in the cloud. 
 
 Eudoxia is built to be used as a simple python package. All that is required is writing a `params.toml` file, and starting the simulator is as simple as running:
