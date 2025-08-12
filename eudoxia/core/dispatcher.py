@@ -26,7 +26,16 @@ class WorkloadGenerator:
         # probabilities of interactive, query, batch pipelines
         # normalized so that when cast to np float probs sum to 1, per np notes:
         # https://numpy.org/doc/stable/reference/random/generated/numpy.random.Generator.choice.html
-        prob_array = np.array([interactive_prob, query_prob, batch_prob])
+        self.priority_values = [
+            Priority.INTERACTIVE.value,
+            Priority.QUERY.value,
+            Priority.BATCH_PIPELINE.value,
+        ]
+        prob_array = np.array([
+            interactive_prob,
+            query_prob,
+            batch_prob,
+        ])
         self.priority_probs = prob_array / np.sum(prob_array, dtype=float)
         # number of pipelines sent at a time
         self.num_pipelines = num_pipelines
@@ -93,10 +102,9 @@ class WorkloadGenerator:
         """
         pipelines = []
         for _ in range(self.num_pipelines):
-            priority = self.rng.integers(1, 4)
-            priority = self.rng.choice(a=[1,2,3], p=self.priority_probs)
+            priority = self.rng.choice(a=self.priority_values, p=self.priority_probs)
             p = Pipeline(Priority(priority))
-            if priority == 2:
+            if priority == Priority.QUERY.value:
                 op = Operator()
                 seg = self.generate_query_segment()
                 op.values.add_node(seg)
