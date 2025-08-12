@@ -24,7 +24,7 @@ def test_workload_generator_determinism():
     # Create two generators with the same seed
     seed = 42
     rng1 = np.random.Generator(np.random.PCG64(seed))
-    rng2 = np.random.Generator(np.random.PCG64(seed))
+    rng2 = np.random.Generator(np.random.PCG64(seed+1))
     
     gen1 = WorkloadGenerator(rng=rng1, **params)
     gen2 = WorkloadGenerator(rng=rng2, **params)
