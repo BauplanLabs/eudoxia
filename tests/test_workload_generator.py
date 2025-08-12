@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from eudoxia.core.dispatcher import WorkloadGenerator
+from eudoxia.core.workload import WorkloadGenerator
 
 
 def test_workload_generator_determinism():
