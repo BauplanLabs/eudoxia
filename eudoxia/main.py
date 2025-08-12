@@ -1,6 +1,6 @@
 import tomllib
 import logging
-from typing import List, Dict
+from typing import List, Dict, Union
 import numpy as np
 
 from eudoxia.utils.consts import TICK_LENGTH_SECS
@@ -9,7 +9,52 @@ from eudoxia.utils import Assignment, Pipeline
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["run_simulator", "parse_args_with_defaults"]
+__all__ = ["run_simulator", "parse_args_with_defaults", "get_param_defaults"]
+
+def get_param_defaults() -> Dict:
+    """
+    Returns a dictionary with all default parameter values.
+    
+    Returns:
+        dict: Default values for all simulator parameters
+    """
+    return {
+        # how long the simulation will run in seconds
+        "duration": 60,
+        
+        ### Workload Generation Params ###
+        # how many ticks the dispatcher will wait between generating pipelines
+        "waiting_ticks_mean": 1_000_000,
+        # number of pipelines to generate when pipelines are created
+        "num_pipelines": 4,
+        # average number of operators per pipeline
+        "num_operators": 5,
+        # NOT IN USE (Aug 15 '24); how many disjoint subtrees there are in a
+        # pipeline, i.e. how parallelizable the pipeline is
+        "parallel_factor": 1,
+        # num_segs not being used: all operators have a single segment
+        "num_segs": 1,
+        # probabilities for different pipeline priority levels
+        "interactive_prob": 0.3,
+        "query_prob": 0.1,
+        "batch_prob": 0.6,
+        # value between 0 and 1 indicating on average how IO heavy a segment is. Low
+        # value is IO heavier
+        "cpu_io_ratio": 0.5,
+        
+        ### Scheduler Params ###
+        "scheduler_algo": "priority",
+        
+        ### Executor Params ###
+        # number of resource pools for executors
+        "num_pools": 1,
+        # number of CPUs or vCPUs
+        "cpu_pool": 64,
+        # GB in RAM pool
+        "ram_pool": 500,
+        # random seed and rng generator
+        "random_seed": 10,
+    }
 
 def parse_args_with_defaults(params: Dict) -> Dict:
     """
@@ -21,70 +66,18 @@ def parse_args_with_defaults(params: Dict) -> Dict:
         dict: params plus default values for any values not supplied
 
     """
-    # how long the simulation will run in seconds
-    if "duration" not in params:
-        params["duration"] = 60
+    # Copy the input params to avoid modifying the original
+    result = params.copy()
 
-    ###
-    ### Workload Generation Params
-    ###
-    # how many ticks the dispatcher will wait between generating pipelines
-    if "waiting_ticks_mean" not in params:
-        params["waiting_ticks_mean"] = 1,000,000
-    # number of pipelines to generate when pipelines are created
-    if "num_pipelines" not in params:
-        params["num_pipelines"] = 4
-    # average number of operators per pipeline
-    if "num_operators" not in params:
-        params["num_operators"] = 5
-    # NOT IN USE (Aug 15 '24); how many disjoint subtrees there are in a
-    # pipeline, i.e. how parallelizable the pipeline is
-    if "parallel_factor" not in params:
-        params["parallel_factor"] = 1
-    # num_segs not being used: all operators have a single segment
-    if "num_segs" not in params:
-        params["num_segs"] = 1
-    # probabilities for different pipeline priority levels
-    if "interactive_prob" not in params:
-        params["interactive_prob"] = 0.3
-    if "query_prob" not in params:
-        params["query_prob"] = 0.1
-    if "batch_prob" not in params:
-        params["batch_prob"] = 0.6
-    assert (params["interactive_prob"] + params["query_prob"] + params["batch_prob"] == 1)
-    # value between 0 and 1 indicating on average how IO heavy a segment is. Low
-    # value is IO heavier
-    if "cpu_io_ratio" not in params:
-        params["cpu_io_ratio"] = 0.5
-    else:
-        assert params["cpu_io_ratio"] <= 1 and params["cpu_io_ratio"] >= 0, \
-               "CPU IO ratio must be between 0 and 1"
+    # Get defaults and add any missing values
+    defaults = get_param_defaults()
+    for key, default_value in defaults.items():
+        if key not in result:
+            result[key] = default_value
 
-    ###
-    ### Scheduler Params
-    ###
-    if "scheduler_algo" not in params:
-        params["scheduler_algo"] = "priority"
+    return result
 
-    ###
-    ### Executor Params
-    ###
-    # number of resource pools for executors
-    if "num_pools" not in params:
-        params["num_pools"] = 1
-    # number of CPUs or vCPUs 
-    if "cpu_pool" not in params:
-        params["cpu_pool"] = 64
-    # GB in RAM pool
-    if "ram_pool" not in params:
-        params["ram_pool"] = 500
-    # random seed and rng generator
-    if "random_seed" not in params:
-        params["random_seed"] = 10
-    params["rng"] = np.random.default_rng(params["random_seed"])
-    return params
-
-def run_simulator(param_file: str):
+def run_simulator(param_input: Union[str, Dict]):
     """
     The main method to run the simulator. There are three core entities,
     WorkloadGenerator, Scheduler, and Executor. Each offers a `run_one_tick`
@@ -93,20 +86,33 @@ def run_simulator(param_file: str):
     the results of one function to another
 
     Args:
-        param_file: location of TOML file with params
+        param_input: Either a path to a TOML file with params, or a dict of params
     """
-    try: 
-        with open(param_file, 'rb') as fp:
-            params = tomllib.load(fp)
-    except FileNotFoundError:
-        logger.error(f"Invalid parameter file provided")
-        raise
-    except tomllib.TOMLDecodeError:
-        logger.error("Error parsing param file: should be in TOML format")
-        raise
+    # Load params from file or use dict directly
+    if isinstance(param_input, str):
+        try: 
+            with open(param_input, 'rb') as fp:
+                params = tomllib.load(fp)
+        except FileNotFoundError:
+            logger.error(f"Invalid parameter file provided")
+            raise
+        except tomllib.TOMLDecodeError:
+            logger.error("Error parsing param file: should be in TOML format")
+            raise
+    else:
+        params = param_input.copy()
 
     # Sanitize parameters and fill in default values
     params = parse_args_with_defaults(params)
+    
+    # Validate constraints
+    assert (params["interactive_prob"] + params["query_prob"] + params["batch_prob"] == 1), \
+        "Probabilities must sum to 1"
+    assert params["cpu_io_ratio"] <= 1 and params["cpu_io_ratio"] >= 0, \
+        "CPU IO ratio must be between 0 and 1"
+    
+    if not "rng" in params:
+        params["rng"] = np.random.default_rng(params["random_seed"])
 
     # INITIALIZATION
     work_gen = WorkloadGenerator(**params)
@@ -138,8 +144,3 @@ def run_simulator(param_file: str):
     logger.info(f"{oom} pipelines couldn't run w/o using >50% of system RAM")
     logger.info(f"Completed {executor.num_completed()} pipelines with a thruput of {thruput}")
     logger.info(f"{p99:.2f}s p99 latency")
-
-
-
-
-
