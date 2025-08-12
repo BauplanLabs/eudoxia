@@ -24,7 +24,9 @@ class Scheduler:
     #                     'priority-pool': priority_pool_scheduler}
     def __init__(self, executor: Executor, scheduler_algo):
         self.executor = executor
-        assert scheduler_algo in SCHEDULING_ALGOS, "Invalid scheduling algorithm"
+        if not scheduler_algo in SCHEDULING_ALGOS:
+            options = sorted(SCHEDULING_ALGOS.keys())
+            raise ValueError(f"Scheduler {repr(scheduler_algo)} not available.  Options: {repr(options)}'")
         self.algo_name = scheduler_algo
         self.algo_func = SCHEDULING_ALGOS[scheduler_algo]
         logger.info(scheduler_algo)
