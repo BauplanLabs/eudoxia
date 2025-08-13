@@ -18,10 +18,6 @@ class Scheduler:
 
     # ''' The table of pre-implemented scheduling algorithms and corresponding
     # initialization functions'''
-    # INIT_ALGOS = {'naive': naive_pipeline_init, 'priority': init_priority_scheduler, 
-    #               'priority-pool': init_priority_pool_scheduler}
-    # SCHEDULING_ALGOS = {'naive': naive_pipeline, 'priority': priority_scheduler, 
-    #                     'priority-pool': priority_pool_scheduler}
     def __init__(self, executor: Executor, scheduler_algo):
         self.executor = executor
         if not scheduler_algo in SCHEDULING_ALGOS:

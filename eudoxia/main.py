@@ -1,11 +1,20 @@
 import tomllib
 import logging
-from typing import List, Dict, Union
+from typing import List, Dict, Union, NamedTuple
 import numpy as np
 
 from eudoxia.utils.consts import TICK_LENGTH_SECS
-from eudoxia.core import WorkloadGenerator, Scheduler, Executor 
+from eudoxia.core import Workload, WorkloadGenerator, Scheduler, Executor 
 from eudoxia.utils import Assignment, Pipeline
+
+
+class SimulatorStats(NamedTuple):
+    """Statistics returned from a simulator run"""
+    pipelines_created: int
+    pipelines_completed: int
+    oom_failures: int
+    throughput: float
+    p99_latency: float
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +86,7 @@ def parse_args_with_defaults(params: Dict) -> Dict:
 
     return result
 
-def run_simulator(param_input: Union[str, Dict]):
+def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> SimulatorStats:
     """
     The main method to run the simulator. There are three core entities,
     WorkloadGenerator, Scheduler, and Executor. Each offers a `run_one_tick`
@@ -87,6 +96,11 @@ def run_simulator(param_input: Union[str, Dict]):
 
     Args:
         param_input: Either a path to a TOML file with params, or a dict of params
+        workload: Optional custom workload source. If None, uses WorkloadGenerator with params
+    
+    Returns:
+        SimulatorStats: Statistics from the simulation run including pipelines
+        created/completed, OOM failures, throughput, and p99 latency
     """
     # Load params from file or use dict directly
     if isinstance(param_input, str):
@@ -115,7 +129,8 @@ def run_simulator(param_input: Union[str, Dict]):
         params["rng"] = np.random.default_rng(params["random_seed"])
 
     # INITIALIZATION
-    work_gen = WorkloadGenerator(**params)
+    if workload is None:
+        workload = WorkloadGenerator(**params)
     executor = Executor(**params)
     scheduler = Scheduler(executor, scheduler_algo=params["scheduler_algo"])
 
@@ -127,7 +142,7 @@ def run_simulator(param_input: Union[str, Dict]):
     num_pipelines_created = 0
     failures = []
     while tick_number < max_ticks:
-        pipelines: List[Pipeline] = work_gen.run_one_tick()
+        pipelines: List[Pipeline] = workload.run_one_tick()
         num_pipelines_created += len(pipelines)
         suspensions, assignments = scheduler.run_one_tick(failures, pipelines)
         failures = executor.run_one_tick(suspensions, assignments)
@@ -136,7 +151,7 @@ def run_simulator(param_input: Union[str, Dict]):
 
     # TODO: better way to calculate work thruput, going by num ops, etc. is
     # going to skew towards more smaller jobs
-    oom = scheduler.oom_failed_to_run 
+    oom = getattr(scheduler, 'oom_failed_to_run', 0) 
     thruput = executor.num_completed() / params['duration']
     p99 = np.percentile(executor.container_tick_times(), 99) * TICK_LENGTH_SECS
     logger.info(f"Ran for {params['duration']} seconds or {max_ticks} ticks")
@@ -144,3 +159,11 @@ def run_simulator(param_input: Union[str, Dict]):
     logger.info(f"{oom} pipelines couldn't run w/o using >50% of system RAM")
     logger.info(f"Completed {executor.num_completed()} pipelines with a thruput of {thruput}")
     logger.info(f"{p99:.2f}s p99 latency")
+    
+    return SimulatorStats(
+        pipelines_created=num_pipelines_created,
+        pipelines_completed=executor.num_completed(),
+        oom_failures=oom,
+        throughput=thruput,
+        p99_latency=p99
+    )
