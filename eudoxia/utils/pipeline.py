@@ -1,7 +1,7 @@
 from typing import List
 import numpy as np
 from eudoxia.utils import EudoxiaException, DISK_SCAN_GB_SEC, TICK_LENGTH_SECS, Priority
-from .tree import Node, Tree
+from .dag import Node, DAG
 
 class ScalingFuncs:
     """
@@ -112,7 +112,7 @@ class Operator(Node):
     """
     def __init__(self):
         super().__init__()
-        self.values: Tree[Segment] = Tree()
+        self.values: DAG[Segment] = DAG()
 
 class Pipeline(Node):
     """ 
@@ -121,6 +121,6 @@ class Pipeline(Node):
     """
     def __init__(self, priority: Priority):
         super().__init__()
-        self.values: Tree[Operator] = Tree()
+        self.values: DAG[Operator] = DAG()
         self.priority: Priority = priority
 
