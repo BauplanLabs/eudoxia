@@ -2,11 +2,27 @@ import logging
 import numpy as np
 import random
 from typing import List
+from abc import ABC, abstractmethod
 from eudoxia.utils import Pipeline, Operator, Segment, Priority
 
 logger = logging.getLogger(__name__)
 
-class WorkloadGenerator:
+
+class Workload(ABC):
+    """Abstract base class for workload sources"""
+    
+    @abstractmethod
+    def run_one_tick(self) -> List[Pipeline]:
+        """
+        Generate pipelines for the current tick.
+        
+        Returns:
+            List[Pipeline]: List of pipelines arriving at this tick
+        """
+        pass
+
+
+class WorkloadGenerator(Workload):
     """
     Class to generate workloads according to user and default parameters
     """

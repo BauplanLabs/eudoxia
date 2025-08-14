@@ -4,6 +4,28 @@ import uuid
 import logging
 logger = logging.getLogger(__name__)
 
+''' The table of scheduling algorithms and corresponding initialization functions'''
+INIT_ALGOS = {}
+SCHEDULING_ALGOS = {}
+
+
+def register_scheduler_init(key):
+    def decorator(func):
+        if key in INIT_ALGOS: 
+            raise KeyError(f"Algorithm key '{key}' is already registered.")
+        INIT_ALGOS[key] = func
+        return func
+    return decorator
+
+def register_scheduler(key):
+    def decorator(func):
+        if key in SCHEDULING_ALGOS: 
+            raise KeyError(f"Algorithm key '{key}' is already registered.")
+        SCHEDULING_ALGOS[key] = func
+        return func
+    return decorator
+
+
 class WaitingQueueJob: 
     def __init__(self, priority: Priority, p: Pipeline=None, ops:
                  List[Operator]=None, pool_id: int = None,
@@ -19,9 +41,11 @@ class WaitingQueueJob:
         self.error = error
 
 
+@register_scheduler_init(key="naive")
 def naive_pipeline_init(s): 
     s.waiting_queue: Tuple[List[Operator], Priority] = []
 
+@register_scheduler(key="naive")
 def naive_pipeline(s, failures: List[Failure], 
                    pipelines: List[Pipeline]) -> Tuple[List[Suspend], List[Assignment]]:
     """
@@ -29,28 +53,32 @@ def naive_pipeline(s, failures: List[Failure],
     resources of a pool to a single pipeline and handles them in a FIFO order. It
     assigns one job at a time to each pool created.
     Args:
-        pipelines(list): passed in list from WorkloadGenerator
+        failures: List of failed containers from previous tick (ignored in naive implementation)
+        pipelines: List of pipelines from WorkloadGenerator
     Returns:
-        list[assignment]: the resulting assignment to provide to Executor
+        Tuple[List[Suspend], List[Assignment]]: 
+            - List of containers to suspend (always empty for naive scheduler)
+            - List of new assignments to provide to Executor
     """
     for p in pipelines:
         ops = [op for op in p.values]
         s.waiting_queue.append((ops, p.priority))
     if len(s.waiting_queue) == 0:
-        return []
+        return [], []
 
     suspensions = []
     assignments = []
     for pool_id in range(s.executor.num_pools):
         avail_cpu_pool = s.executor.pools[pool_id].avail_cpu_pool
         avail_ram_pool = s.executor.pools[pool_id].avail_ram_pool
-        if avail_cpu_pool > 0 and avail_ram_pool > 0:
+        if avail_cpu_pool > 0 and avail_ram_pool > 0 and s.waiting_queue:
             op_list, priority = s.waiting_queue.pop(0)
             assignment = Assignment(ops=op_list, cpu=avail_cpu_pool, ram=avail_ram_pool,
                                     priority=priority, pool_id=pool_id)
             assignments.append(assignment)
-    return [], assignments
+    return suspensions, assignments
 
+@register_scheduler_init(key="priority-pool")
 def init_priority_pool_scheduler(s):
     s.qry_jobs: List[WaitingQueueJob]   = [] # high
     s.interactive_jobs: List[WaitingQueueJob] = [] # medium 
@@ -60,12 +88,22 @@ def init_priority_pool_scheduler(s):
     assert s.executor.num_pools == 2, "Priority-by-pool scheduler requires 2 pools"
     s.oom_failed_to_run = 0
 
+@register_scheduler(key="priority-pool")
 def priority_pool_scheduler(s, failures: List[Failure],
                        pipelines: List[Pipeline]) -> Tuple[List[Suspend], List[Assignment]]:
-    '''
-    jobs come in, we don't suspend anything, we send interactive/queries to
-    one, batch to another. 
-    '''
+    """
+    Scheduler that assigns jobs to dedicated pools based on priority.
+    Interactive/query jobs go to one pool, batch jobs to another.
+    This scheduler doesn't perform preemption/suspension.
+    
+    Args:
+        failures: Jobs failed by the executor last tick
+        pipelines: Newly generated pipelines arriving
+    Returns:
+        Tuple[List[Suspend], List[Assignment]]:
+            - List of containers to suspend (always empty for this scheduler)
+            - List of new assignments to provide to Executor
+    """
     # Add new pipelines to appropriate queues
     for p in pipelines:
         job = WaitingQueueJob(priority=p.priority, p=p)
@@ -220,6 +258,7 @@ def priority_pool_scheduler(s, failures: List[Failure],
 
 
 
+@register_scheduler_init(key="priority")
 def init_priority_scheduler(s): 
     s.qry_jobs: List[WaitingQueueJob]   = [] # high
     s.interactive_jobs: List[WaitingQueueJob] = [] # medium 
@@ -239,6 +278,7 @@ def get_pool_with_max_avail_ram(s, pool_stats):
             max_ram = pool_stats[i]["avail_ram"]
     return id_
 
+@register_scheduler(key="priority")
 def priority_scheduler(s, failures: List[Failure],
                        pipelines: List[Pipeline]) -> Tuple[List[Suspend], List[Assignment]]:
     """
@@ -246,10 +286,12 @@ def priority_scheduler(s, failures: List[Failure],
     STARVE low priority jobs. 
 
     Args:
-        failures are a jobs failed by the executor last tick
-        pipelines are newly generated pipelines arriving
+        failures: Jobs failed by the executor last tick
+        pipelines: Newly generated pipelines arriving
     Returns:
-        suspensions: List[Suspend]
+        Tuple[List[Suspend], List[Assignment]]:
+            - List of containers to suspend (for preemption of lower priority jobs)
+            - List of new assignments to provide to Executor
     """
     # Add new pipelines to appropriate queues
     for p in pipelines:
@@ -420,29 +462,4 @@ def priority_scheduler(s, failures: List[Failure],
     for a in new_assignments:
         logger.info(a)
     return suspensions, new_assignments
-
-
-''' The table of pre-implemented scheduling algorithms and corresponding
-initialization functions'''
-INIT_ALGOS = {'naive': naive_pipeline_init, 'priority': init_priority_scheduler, 
-              'priority-pool': init_priority_pool_scheduler}
-SCHEDULING_ALGOS = {'naive': naive_pipeline, 'priority': priority_scheduler, 
-                    'priority-pool': priority_pool_scheduler}
-
-
-def register_scheduler_init(key):
-    def decorator(func):
-        if key in INIT_ALGOS: 
-            raise KeyError(f"Algorithm key '{key}' is already registered.")
-        INIT_ALGOS[key] = func
-        return func
-    return decorator
-
-def register_scheduler(key):
-    def decorator(func):
-        if key in SCHEDULING_ALGOS: 
-            raise KeyError(f"Algorithm key '{key}' is already registered.")
-        SCHEDULING_ALGOS[key] = func
-        return func
-    return decorator
 

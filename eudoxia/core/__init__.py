@@ -1,6 +1,6 @@
 import logging
 import sys
-from .workload import WorkloadGenerator
+from .workload import Workload, WorkloadGenerator
 from .scheduler import Scheduler
 from .executor import Executor
 # from .pipeline import Operator, Pipeline, Segment
