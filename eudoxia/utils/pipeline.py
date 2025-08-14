@@ -1,6 +1,6 @@
 from typing import List
 import numpy as np
-from eudoxia.utils import EudoxiaException, DISK_SCAN_GB_SEC, TICK_LENGTH_SECS, Priority
+from eudoxia.utils import EudoxiaException, DISK_SCAN_GB_SEC, Priority
 from .dag import Node, DAG
 
 class ScalingFuncs:
@@ -65,10 +65,11 @@ class Segment(Node):
                         "squared": ScalingFuncs._squared,
                         "exp":     ScalingFuncs._exponential_bnd,
                     }
-    def __init__(self, scaling, io=None, init_cpu_time=None):
+    def __init__(self, scaling, io=None, init_cpu_time=None, tick_length_secs=None):
         super().__init__()
         self.io = io # GB read into ram
         self.init_cpu_time = init_cpu_time # time for one processor
+        self.tick_length_secs = tick_length_secs
         if callable(scaling):
             self.scaling = scaling
             self.scaling_type = "callable"
@@ -88,8 +89,10 @@ class Segment(Node):
         return self.io / DISK_SCAN_GB_SEC
 
     def get_io_ticks(self):
+        if self.tick_length_secs is None:
+            raise EudoxiaException("tick_length_secs not set for Segment")
         io_time_secs = self.get_io_time()
-        io_time_ticks = int(io_time_secs / TICK_LENGTH_SECS)
+        io_time_ticks = int(io_time_secs / self.tick_length_secs)
         return io_time_ticks
 
     def scale_cpu_time(self, num_cpus):
@@ -99,8 +102,10 @@ class Segment(Node):
             return Segment.SCALING_FUNCS[self.scaling](num_cpus, self.init_cpu_time)
 
     def scale_cpu_time_ticks(self, num_cpus):
+        if self.tick_length_secs is None:
+            raise EudoxiaException("tick_length_secs not set for Segment")
         cpu_time_secs = self.scale_cpu_time(num_cpus)
-        cpu_time_ticks = int(cpu_time_secs / TICK_LENGTH_SECS)
+        cpu_time_ticks = int(cpu_time_secs / self.tick_length_secs)
         return cpu_time_ticks
 
 

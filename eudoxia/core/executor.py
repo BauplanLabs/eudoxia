@@ -2,7 +2,7 @@ import logging
 import uuid
 import  numpy as np
 from typing import List, Dict, Tuple
-from eudoxia.utils import EudoxiaException, DISK_SCAN_GB_SEC, TICK_LENGTH_SECS, Priority
+from eudoxia.utils import EudoxiaException, DISK_SCAN_GB_SEC, Priority
 from eudoxia.utils import Suspend, Assignment, Failure
 from eudoxia.utils import Segment, Operator, Pipeline
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ class Container:
     created and then calculates how many ticks it will need to run with
     resources provided. 
     """
-    def __init__(self, ram, cpu, ops, prty: Priority, pool_id: int, rng: np.random.Generator):
+    def __init__(self, ram, cpu, ops, prty: Priority, pool_id: int, rng: np.random.Generator, tick_length_secs: float):
         self.cid = uuid.UUID(bytes=rng.bytes(16))
         self.pool_id = pool_id
         self.ram = ram
@@ -24,10 +24,11 @@ class Container:
         self._suspend_ticks_left = None
         self.priority = prty
         self.error: str = None
+        self.tick_length_secs = tick_length_secs
 
         self.num_ticks = self._compute_ticks() 
         self._num_ticks_left = self.num_ticks
-        self.num_secs = self.num_ticks * TICK_LENGTH_SECS
+        self.num_secs = self.num_ticks * self.tick_length_secs
         logger.info(self.__repr__())
     
     def __repr__(self):
@@ -53,7 +54,7 @@ class Container:
                     # however long it would take to read the data needed for
                     # this container's RAM total, as it will OOM when it gets to
                     # that point, not when it reads the entire segment's RAM
-                    seg_ticks_before_OOM = int((self.ram / DISK_SCAN_GB_SEC) / TICK_LENGTH_SECS)
+                    seg_ticks_before_OOM = int((self.ram / DISK_SCAN_GB_SEC) / self.tick_length_secs)
                     total_ticks += seg_ticks_before_OOM
 
                 scan_time_ticks = seg.get_io_ticks()
@@ -102,13 +103,14 @@ class ResourcePool:
     assignments and ensures that all costs and resources are accounted for and
     additional are allocated if instructed.
     """
-    def __init__(self, pool_id, cpu_pool, ram_pool, rng, **kwargs):
+    def __init__(self, pool_id, cpu_pool, ram_pool, rng, tick_length_secs, **kwargs):
         self.pool_id = pool_id
         self.max_cpu_pool = cpu_pool
         self.max_ram_pool = ram_pool
         self.avail_cpu_pool = cpu_pool
         self.avail_ram_pool = ram_pool
         self.rng = rng
+        self.tick_length_secs = tick_length_secs
 
         # List of actively running and suspended containers
         self.active_containers: List[Container] = [] 
@@ -154,7 +156,7 @@ class ResourcePool:
     def status_report(self):
         logger.info(f"----------STATUS REPORT POOL {self.pool_id}----------")
         for c in self.active_containers:
-            secs_left = c._num_ticks_left * TICK_LENGTH_SECS 
+            secs_left = c._num_ticks_left * self.tick_length_secs 
             logger.info(f"{c.cid} running with {c._num_ticks_left} ticks left or {secs_left} seconds left")
         logger.info(f"----------END STATUS REPORT FOR POOL {self.pool_id}----------")
 
@@ -184,7 +186,8 @@ class ResourcePool:
             self.verify_valid_assignment(assignments)
             for a in assignments:
                 container = Container(ram=a.ram, cpu=a.cpu, ops=a.ops,
-                                      prty=a.priority, pool_id=self.pool_id, rng=self.rng)
+                                      prty=a.priority, pool_id=self.pool_id, rng=self.rng,
+                                      tick_length_secs=self.tick_length_secs)
                 self.avail_cpu_pool -= a.cpu
                 self.avail_ram_pool -= a.ram
                 self.active_containers.append(container)
@@ -233,12 +236,13 @@ class Executor:
     assignments and ensures that all costs and resources are accounted for and
     additional are allocated if instructed.
     """
-    def __init__(self, num_pools, cpu_pool, ram_pool, rng, **kwargs):
+    def __init__(self, num_pools, cpu_pool, ram_pool, rng, tick_length_secs, **kwargs):
         # total amount of resources allocated
         self.num_pools = num_pools
         self.max_cpus = cpu_pool
         self.max_ram = ram_pool
         self.rng = rng
+        self.tick_length_secs = tick_length_secs
         
         # computation for dividing ram, cpu among diff pools
         cpu_per_pool, cpu_remainder = divmod(self.max_cpus, self.num_pools)
@@ -249,7 +253,8 @@ class Executor:
         for i in range(self.num_pools):
             cpu_pool_i = cpu_per_pool + (1 if i < cpu_remainder else 0)
             ram_pool_i = ram_per_pool + (1 if i < ram_remainder else 0)
-            new_pool = ResourcePool(i, cpu_pool_i, ram_pool_i, self.rng, **kwargs)
+            new_pool = ResourcePool(pool_id=i, cpu_pool=cpu_pool_i, ram_pool=ram_pool_i, 
+                                   rng=self.rng, tick_length_secs=self.tick_length_secs, **kwargs)
             self.pools.append(new_pool)
 
     def get_pool_id_with_max_avail_ram(self) -> int:
