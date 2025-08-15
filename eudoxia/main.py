@@ -3,7 +3,7 @@ import logging
 from typing import List, Dict, Union, NamedTuple
 import numpy as np
 
-from eudoxia.utils.consts import TICK_LENGTH_SECS
+from eudoxia.utils.consts import MICROSEC_TO_SEC
 from eudoxia.core import Workload, WorkloadGenerator, Scheduler, Executor 
 from eudoxia.utils import Assignment, Pipeline
 
@@ -30,6 +30,8 @@ def get_param_defaults() -> Dict:
     return {
         # how long the simulation will run in seconds
         "duration": 60,
+        # length of one tick in seconds (10 microseconds by default)
+        "tick_length_secs": 10 * MICROSEC_TO_SEC,
         
         ### Workload Generation Params ###
         # how many ticks the dispatcher will wait between generating pipelines
@@ -135,7 +137,7 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     scheduler = Scheduler(executor, scheduler_algo=params["scheduler_algo"])
 
     tick_number = 0
-    max_ticks = int(params["duration"] / TICK_LENGTH_SECS)
+    max_ticks = int(params["duration"] / params["tick_length_secs"])
     logger.info(f"Running for {params['duration']}s or {max_ticks} ticks")
     logger.info(f"Running with random seed {params['random_seed']}")
 
@@ -153,7 +155,7 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     # going to skew towards more smaller jobs
     oom = getattr(scheduler, 'oom_failed_to_run', 0) 
     thruput = executor.num_completed() / params['duration']
-    p99 = np.percentile(executor.container_tick_times(), 99) * TICK_LENGTH_SECS
+    p99 = np.percentile(executor.container_tick_times(), 99) * params["tick_length_secs"]
     logger.info(f"Ran for {params['duration']} seconds or {max_ticks} ticks")
     logger.info(f"Created {num_pipelines_created} pipelines")
     logger.info(f"{oom} pipelines couldn't run w/o using >50% of system RAM")

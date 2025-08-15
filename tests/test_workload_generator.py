@@ -1,6 +1,7 @@
 import pytest
 import numpy as np
 from eudoxia.core.workload import WorkloadGenerator
+from eudoxia.main import get_param_defaults
 
 
 def test_workload_generator_determinism():
@@ -9,7 +10,8 @@ def test_workload_generator_determinism():
     identical workloads until we get at least 5 cases with pipelines.
     """
     # Common parameters for both generators
-    params = {
+    params = get_param_defaults()
+    params.update({
         'waiting_ticks_mean': 10,
         'num_pipelines': 3,
         'num_operators': 5,
@@ -19,7 +21,7 @@ def test_workload_generator_determinism():
         'batch_prob': 0.4,
         'query_prob': 0.3,
         'interactive_prob': 0.3
-    }
+    })
     
     # Create two generators with the same seed
     seed = 42

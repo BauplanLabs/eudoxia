@@ -29,9 +29,10 @@ class WorkloadGenerator(Workload):
     def __init__(self, waiting_ticks_mean, num_pipelines, num_operators,
                  parallel_factor, num_segs, cpu_io_ratio, 
                  rng: np.random.Generator, batch_prob, query_prob,
-                 interactive_prob, **kwargs):
+                 interactive_prob, tick_length_secs, **kwargs):
 
         assert cpu_io_ratio <= 1.0 and cpu_io_ratio >= 0, "invalid CPU-IO ratio parameter"
+        self.tick_length_secs = tick_length_secs
         self.ticks_since_last_gen = 0
         self.waiting_ticks_mean = waiting_ticks_mean
         self.waiting_ticks_stdev = waiting_ticks_mean / 4
@@ -66,7 +67,7 @@ class WorkloadGenerator(Workload):
 
     
     def generate_query_segment(self) -> Segment:
-        return Segment("linear3", 35, 15)
+        return Segment("linear3", io=35, init_cpu_time=15, tick_length_secs=self.tick_length_secs)
 
     def generate_segment_not_heavy_io(self) -> Segment:
         """
@@ -93,19 +94,19 @@ class WorkloadGenerator(Workload):
         scaling more aggressively, and longer CPU times
         """
         if val < -1:
-            return Segment("const", 55, 1)
+            return Segment("const", io=55, init_cpu_time=1, tick_length_secs=self.tick_length_secs)
         elif val >= -1 and val < -0.5:
-            return Segment("sqrt", 55, 2)
+            return Segment("sqrt", io=55, init_cpu_time=2, tick_length_secs=self.tick_length_secs)
         elif val >= -0.5 and val < 0:
-            return Segment("linear3", 45, 5)
+            return Segment("linear3", io=45, init_cpu_time=5, tick_length_secs=self.tick_length_secs)
         elif val >= 0 and val < 0.5:
-            return Segment("linear3", 37.5, 15)
+            return Segment("linear3", io=37.5, init_cpu_time=15, tick_length_secs=self.tick_length_secs)
         elif val >= 0.5 and val < 1:
-            return Segment("linear7", 30, 20)
+            return Segment("linear7", io=30, init_cpu_time=20, tick_length_secs=self.tick_length_secs)
         elif val >= 1 and val < 1.5:
-            return Segment("linear7", 20, 40)
+            return Segment("linear7", io=20, init_cpu_time=40, tick_length_secs=self.tick_length_secs)
         elif val >= 1.5:
-            return Segment("squared", 10, 80)
+            return Segment("squared", io=10, init_cpu_time=80, tick_length_secs=self.tick_length_secs)
 
     
     # Actual TODO: 1. what logic do we want on failure not enough RAM
