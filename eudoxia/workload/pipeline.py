@@ -1,7 +1,7 @@
 from typing import List
 import numpy as np
 from eudoxia.utils import EudoxiaException, DISK_SCAN_GB_SEC, Priority
-from .dag import Node, DAG
+from eudoxia.utils.dag import Node, DAG
 
 class ScalingFuncs:
     """

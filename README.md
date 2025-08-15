@@ -57,23 +57,35 @@ Pipelines are also annotated with the context in which they were submitted. This
 For example, consider an ML pipeline which first executes a SQL query on underlying data in a Parquet file to extract data in a certain format, that data is then passed to a python function which performs some normalization steps and loads it into a numpy array, and finally that array is passed to a python function which trains a simple regression model on the data prepared. This entire job would be represented as a single `Pipeline` comprised of 3 `Operators`, one for the SQL, one for the preparation/normalization, one for the training, and each operator is comprised of a single `Segment` which represents the actual IO and CPU resources consumed when the function runs. 
 
 ## Ticks 
-Each iteration of the simulator is logically defined as a `Tick` for which the default duration is approximated at that of a CPU tick though this can be edited in `utils/consts.py`.  
+Each iteration of the simulator is logically defined as a `Tick`. The duration of each tick is configurable via the `tick_length_secs` parameter in your `params.toml` file, with a default of 10 microseconds. This allows you to adjust the simulation granularity based on your needs - shorter ticks provide more precise simulation at the cost of longer execution time.  
 
 ## Modules
-There are three modules each of which implement a `run_one_tick` function.
-### Dispatcher
-This class handles generating workloads according to the parameters set by `Params.toml`. This `run_one_tick` function takes no arguments and outputs a list of pipelines that were generated. In ticks where no pipelines are generated, this is an empty list. 
+There are three main modules each of which implement a `run_one_tick` function:
+
+### Workload
+```python
+from eudoxia.workload import WorkloadGenerator
+```
+This module handles generating workloads according to the parameters set by `params.toml`. The `WorkloadGenerator` class's `run_one_tick` function takes no arguments and outputs a list of pipelines that were generated. In ticks where no pipelines are generated, this is an empty list. 
 
 ### Scheduler
-This class is where scheduler implementations are loaded. This is paramaterized by the `scheduling_algo` config value in `params.toml`. This `run_one_tick` function takes in a list of pipelines that have failed during execution during the last iteration and the newly generated pipelines. It outputs a list of commands: what Pipelines to suspend in execution, and what Pipelines to allocate resources for an execute. The Scheduler does not see the Segment's ground truth RAM or CPU scaling information. Rather, it can see a limited amount of information (such as the number of operators and query type) and makes scheduling and allocation decisions based on this. 
+```python
+from eudoxia.scheduler import Scheduler
+```
+This module contains scheduler implementations. The scheduler is parameterized by the `scheduler_algo` config value in `params.toml`. The `run_one_tick` function takes in a list of pipelines that have failed during execution during the last iteration and the newly generated pipelines. It outputs a list of commands: what Pipelines to suspend in execution, and what Pipelines to allocate resources for and execute. The Scheduler does not see the Segment's ground truth RAM or CPU scaling information. Rather, it can see a limited amount of information (such as the number of operators and query type) and makes scheduling and allocation decisions based on this.
 
-Different implementation can be written and registered with the codebase to execute. 
+Different scheduler implementations can be written and registered with the codebase:
+```python
+from eudoxia.scheduler import register_scheduler_init, register_scheduler
+```
 
-The Scheduler has access to the Executor object so it can see the current state of what resources are allocated and what resources are available. 
-
+The Scheduler has access to the Executor object so it can see the current state of what resources are allocated and what resources are available.
 
 ### Executor
-This is the class which manages all physical resources such as RAM and CPUs. When instructed to by the Scheduler, the Executor allocates a `Container` which is an object with a set amount of CPUs and RAM and a set of Operators to execute within it (an entire pipeline doesn't need to execute in a single `Container`). 
+```python
+from eudoxia.executor import Executor
+```
+This module manages all physical resources such as RAM and CPUs. When instructed by the Scheduler, the Executor allocates a `Container` which is an object with a set amount of CPUs and RAM and a set of Operators to execute within it (an entire pipeline doesn't need to execute in a single `Container`). 
 
 The `Container` calculates, using `Segment` properties, the number of ticks it will take to complete.
 

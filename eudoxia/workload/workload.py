@@ -3,7 +3,8 @@ import numpy as np
 import random
 from typing import List
 from abc import ABC, abstractmethod
-from eudoxia.utils import Pipeline, Operator, Segment, Priority
+from eudoxia.utils import Priority
+from .pipeline import Pipeline, Operator, Segment
 
 logger = logging.getLogger(__name__)
 

@@ -1,26 +1,26 @@
-from eudoxia.scheduler import register_scheduler_init, register_scheduler
-from eudoxia.utils import *
-from eudoxia.workload import Pipeline, Operator, Assignment, Suspend, Failure
-from typing import Tuple, List
+from typing import List, Tuple
+from eudoxia.workload import Pipeline, Operator, Assignment, Failure, Suspend
+from eudoxia.utils import Priority
+from .decorators import register_scheduler_init, register_scheduler
 
 
-@register_scheduler_init(key="my")
-def my_init(s): 
+@register_scheduler_init(key="naive")
+def naive_pipeline_init(s): 
     s.waiting_queue: Tuple[List[Operator], Priority] = []
 
-@register_scheduler(key="my")
-def my_scheduler(s, failures: List[Failure], 
+@register_scheduler(key="naive")
+def naive_pipeline(s, failures: List[Failure], 
                    pipelines: List[Pipeline]) -> Tuple[List[Suspend], List[Assignment]]:
     """
     A naive implementation of a scheduling pipeline which allocates all
     resources of a pool to a single pipeline and handles them in a FIFO order. It
     assigns one job at a time to each pool created.
     Args:
-        failures: List of failed containers from previous tick (ignored in this implementation)
+        failures: List of failed containers from previous tick (ignored in naive implementation)
         pipelines: List of pipelines from WorkloadGenerator
     Returns:
-        Tuple[List[Suspend], List[Assignment]]:
-            - List of containers to suspend (always empty for this scheduler)
+        Tuple[List[Suspend], List[Assignment]]: 
+            - List of containers to suspend (always empty for naive scheduler)
             - List of new assignments to provide to Executor
     """
     for p in pipelines:
@@ -40,4 +40,3 @@ def my_scheduler(s, failures: List[Failure],
                                     priority=priority, pool_id=pool_id)
             assignments.append(assignment)
     return suspensions, assignments
-

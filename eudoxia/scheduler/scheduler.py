@@ -1,10 +1,10 @@
 from typing import List, Tuple, Dict
 import uuid
-from .executor import Executor
-# from .pipeline import Pipeline, Operator
-from eudoxia.utils import Suspend, Assignment, Failure
-from eudoxia.utils import Priority, Pipeline, Operator
-from eudoxia.algorithms import INIT_ALGOS, SCHEDULING_ALGOS
+from eudoxia.executor import Executor
+from eudoxia.workload import Suspend, Assignment, Failure
+from eudoxia.workload import Pipeline, Operator
+from eudoxia.utils import Priority
+from .decorators import INIT_ALGOS, SCHEDULING_ALGOS
 import logging
 logger = logging.getLogger(__name__)
 
