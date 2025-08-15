@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from unittest.mock import Mock, patch
 from eudoxia.main import get_param_defaults, run_simulator
-from eudoxia.core.workload import WorkloadGenerator
+from eudoxia.workload import WorkloadGenerator
 from eudoxia.utils import Priority
 
 

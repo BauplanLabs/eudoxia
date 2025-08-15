@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from eudoxia.core.workload import WorkloadGenerator
+from eudoxia.workload import WorkloadGenerator
 from eudoxia.main import get_param_defaults
 
 

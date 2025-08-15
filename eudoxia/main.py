@@ -4,8 +4,9 @@ from typing import List, Dict, Union, NamedTuple
 import numpy as np
 
 from eudoxia.utils.consts import MICROSEC_TO_SEC
-from eudoxia.core import Workload, WorkloadGenerator, Scheduler, Executor 
-from eudoxia.utils import Assignment, Pipeline
+from eudoxia.core import Executor
+from eudoxia.scheduler import Scheduler
+from eudoxia.workload import Workload, WorkloadGenerator, Assignment, Pipeline
 
 
 class SimulatorStats(NamedTuple):

@@ -3,8 +3,8 @@ import uuid
 import  numpy as np
 from typing import List, Dict, Tuple
 from eudoxia.utils import EudoxiaException, DISK_SCAN_GB_SEC, Priority
-from eudoxia.utils import Suspend, Assignment, Failure
-from eudoxia.utils import Segment, Operator, Pipeline
+from eudoxia.workload import Suspend, Assignment, Failure
+from eudoxia.workload import Segment, Operator, Pipeline
 logger = logging.getLogger(__name__)
 
 class Container: 

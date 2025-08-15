@@ -1,8 +1,8 @@
 import pytest
 from typing import Dict, List
 from eudoxia.main import run_simulator, get_param_defaults
-from eudoxia.core.workload import Workload
-from eudoxia.utils import Pipeline, Priority
+from eudoxia.workload import Workload, Pipeline
+from eudoxia.utils import Priority
 
 class MockWorkload(Workload):
     """
@@ -28,7 +28,7 @@ class MockWorkload(Workload):
 @pytest.mark.parametrize("scheduler_algo", ["naive", "priority", "priority-pool"])
 def test_run_simulator_basic(scheduler_algo):
     """Test each scheduler with a controlled workload"""
-    from eudoxia.utils import Operator, Segment
+    from eudoxia.workload import Operator, Segment
 
     # configure scheduler
     params = get_param_defaults()
@@ -64,7 +64,7 @@ def test_run_simulator_basic(scheduler_algo):
 @pytest.mark.parametrize("tick_length_secs", [10e-6, 100e-6, 1e-3, 10e-3])  # 10us, 100us, 1ms, 10ms
 def test_tick_length(tick_length_secs):
     """Test that tick length affects execution timing correctly"""
-    from eudoxia.utils import Operator, Segment
+    from eudoxia.workload import Operator, Segment
 
     # Configure for precise timing test
     params = get_param_defaults()
