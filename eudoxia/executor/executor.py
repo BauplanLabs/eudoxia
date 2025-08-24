@@ -1,6 +1,6 @@
 import logging
 from typing import List
-from eudoxia.workload import Suspend, Assignment, Failure
+from .assignment import Suspend, Assignment, Failure
 from .resource_pool import ResourcePool
 
 logger = logging.getLogger(__name__)

@@ -68,7 +68,7 @@ class WorkloadGenerator(Workload):
 
     
     def generate_query_segment(self) -> Segment:
-        return Segment("linear3", io=35, init_cpu_time=15, tick_length_secs=self.tick_length_secs)
+        return Segment(baseline_cpu_seconds=15, cpu_scaling="linear3", storage_read_gb=35)
 
     def generate_segment_not_heavy_io(self) -> Segment:
         """
@@ -95,19 +95,19 @@ class WorkloadGenerator(Workload):
         scaling more aggressively, and longer CPU times
         """
         if val < -1:
-            return Segment("const", io=55, init_cpu_time=1, tick_length_secs=self.tick_length_secs)
+            return Segment(baseline_cpu_seconds=1, cpu_scaling="const", storage_read_gb=55)
         elif val >= -1 and val < -0.5:
-            return Segment("sqrt", io=55, init_cpu_time=2, tick_length_secs=self.tick_length_secs)
+            return Segment(baseline_cpu_seconds=2, cpu_scaling="sqrt", storage_read_gb=55)
         elif val >= -0.5 and val < 0:
-            return Segment("linear3", io=45, init_cpu_time=5, tick_length_secs=self.tick_length_secs)
+            return Segment(baseline_cpu_seconds=5, cpu_scaling="linear3", storage_read_gb=45)
         elif val >= 0 and val < 0.5:
-            return Segment("linear3", io=37.5, init_cpu_time=15, tick_length_secs=self.tick_length_secs)
+            return Segment(baseline_cpu_seconds=15, cpu_scaling="linear3", storage_read_gb=37.5)
         elif val >= 0.5 and val < 1:
-            return Segment("linear7", io=30, init_cpu_time=20, tick_length_secs=self.tick_length_secs)
+            return Segment(baseline_cpu_seconds=20, cpu_scaling="linear7", storage_read_gb=30)
         elif val >= 1 and val < 1.5:
-            return Segment("linear7", io=20, init_cpu_time=40, tick_length_secs=self.tick_length_secs)
+            return Segment(baseline_cpu_seconds=40, cpu_scaling="linear7", storage_read_gb=20)
         elif val >= 1.5:
-            return Segment("squared", io=10, init_cpu_time=80, tick_length_secs=self.tick_length_secs)
+            return Segment(baseline_cpu_seconds=80, cpu_scaling="squared", storage_read_gb=10)
 
     
     # Actual TODO: 1. what logic do we want on failure not enough RAM
@@ -125,7 +125,7 @@ class WorkloadGenerator(Workload):
             if priority == Priority.QUERY.value:
                 op = Operator()
                 seg = self.generate_query_segment()
-                op.values.add_node(seg)
+                op.add_segment(seg)
                 logger.info(f"Pipeline generated with Priority {Priority(priority)} and 1 op")
                 p.values.add_node(op)
             else:
@@ -148,10 +148,10 @@ class WorkloadGenerator(Workload):
                         # draw randomly from all other segment types
                         if prev_seg is None:
                             seg = self.generate_segment_from_val(-2)
-                            op.values.add_node(seg)
+                            op.add_segment(seg)
                         else:
                             seg = self.generate_segment_not_heavy_io()
-                            op.values.add_node(seg, [prev_seg])
+                            op.add_segment(seg)
                         prev_seg = seg
                     ops.append(op)
                 logger.info(f"Pipeline generated with Priority {Priority(priority)} and {curr_num_ops} ops")
