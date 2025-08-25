@@ -2,7 +2,7 @@ import logging
 import uuid
 import numpy as np
 from typing import List
-from eudoxia.workload import Assignment, Suspend, Failure
+from .assignment import Assignment, Suspend, Failure
 from .container import Container
 
 logger = logging.getLogger(__name__)

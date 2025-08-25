@@ -42,8 +42,8 @@ def test_run_simulator_basic(scheduler_algo):
     for i in range(3):
         pipeline = Pipeline(Priority.BATCH_PIPELINE)
         op = Operator()
-        seg = Segment("linear3", io=10, init_cpu_time=5, tick_length_secs=params['tick_length_secs'])
-        op.values.add_node(seg)
+        seg = Segment(baseline_cpu_seconds=5, cpu_scaling="linear3", storage_read_gb=10)
+        op.add_segment(seg)
         pipeline.values.add_node(op)
         pipelines.append(pipeline)
 
@@ -82,8 +82,8 @@ def test_tick_length(tick_length_secs):
         pipeline = Pipeline(Priority.BATCH_PIPELINE)
         op = Operator()
         # CPU-only segment: 0 IO, 1 second CPU time
-        seg = Segment("const", io=0, init_cpu_time=1.0, tick_length_secs=tick_length_secs)
-        op.values.add_node(seg)
+        seg = Segment(baseline_cpu_seconds=1.0, cpu_scaling="const", storage_read_gb=0)
+        op.add_segment(seg)
         pipeline.values.add_node(op)
         pipelines.append(pipeline)
 

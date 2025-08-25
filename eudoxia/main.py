@@ -6,7 +6,8 @@ import numpy as np
 from eudoxia.utils.consts import MICROSEC_TO_SEC
 from eudoxia.executor import Executor
 from eudoxia.scheduler import Scheduler
-from eudoxia.workload import Workload, WorkloadGenerator, Assignment, Pipeline
+from eudoxia.workload import Workload, WorkloadGenerator, Pipeline
+from eudoxia.executor.assignment import Assignment
 
 
 class SimulatorStats(NamedTuple):

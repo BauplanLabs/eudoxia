@@ -45,24 +45,21 @@ class Container:
         """
         total_ticks = 0
         for op in self.operators:
-            for seg in op.values:
-                if seg.io > self.ram:
-                    # set that the container throws an error when it hits this
-                    # many ticks
+            for seg in op.get_segments():
+                # will it OOM, and if so, when?
+                oom_seconds = seg.get_seconds_until_oom(self.ram)
+
+                if oom_seconds is not None:
+                    # compute how long it it will be until the OOM occurs
                     self.error = "OOM"
-
-                    # it will run for as many ticks as it took to get here, plus
-                    # however long it would take to read the data needed for
-                    # this container's RAM total, as it will OOM when it gets to
-                    # that point, not when it reads the entire segment's RAM
-                    seg_ticks_before_OOM = int((self.ram / DISK_SCAN_GB_SEC) / self.tick_length_secs)
+                    seg_ticks_before_OOM = int(oom_seconds / self.tick_length_secs)
                     total_ticks += seg_ticks_before_OOM
-
-                scan_time_ticks = seg.get_io_ticks()
-                cpu_time_ticks = seg.scale_cpu_time_ticks(self.cpu)
-
-                total_ticks += scan_time_ticks
-                total_ticks += cpu_time_ticks
+                else:
+                    # there is no OOM.  We will spend all the time
+                    # expected on I/O (first), then CPU (second)
+                    io_time_secs = seg.get_io_seconds()
+                    cpu_time_secs = seg.get_cpu_time(self.cpu)
+                    total_ticks += int((io_time_secs + cpu_time_secs) / self.tick_length_secs)
                 self.segment_tick_boundaries.append(total_ticks)
         return total_ticks
 

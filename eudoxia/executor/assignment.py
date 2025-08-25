@@ -1,4 +1,4 @@
-from .pipeline import Pipeline, Operator, Segment
+from eudoxia.workload.pipeline import Pipeline, Operator, Segment
 import uuid
 from eudoxia.utils import Priority
 from typing import List

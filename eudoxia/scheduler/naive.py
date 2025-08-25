@@ -1,5 +1,6 @@
 from typing import List, Tuple
-from eudoxia.workload import Pipeline, Operator, Assignment, Failure, Suspend
+from eudoxia.workload import Pipeline, Operator
+from eudoxia.executor.assignment import Assignment, Failure, Suspend
 from eudoxia.utils import Priority
 from .decorators import register_scheduler_init, register_scheduler
 

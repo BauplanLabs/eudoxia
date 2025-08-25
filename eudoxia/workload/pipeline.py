@@ -10,46 +10,47 @@ class ScalingFuncs:
     segment 
     """
     @staticmethod
-    def _const(num_cpus, init_cpu_time):
-        return init_cpu_time
+    def _const(num_cpus, baseline_cpu_seconds):
+        return baseline_cpu_seconds
 
     @staticmethod
-    def _linear_bnded_three(num_cpus, init_cpu_time):
+    def _linear_bnded_three(num_cpus, baseline_cpu_seconds):
         if num_cpus < 3:
-            return init_cpu_time / num_cpus
+            return baseline_cpu_seconds / num_cpus
         else:
-            return init_cpu_time / 3
+            return baseline_cpu_seconds / 3
 
     @staticmethod
-    def _linear_bnded_seven(num_cpus, init_cpu_time):
+    def _linear_bnded_seven(num_cpus, baseline_cpu_seconds):
         if num_cpus < 7:
-            return init_cpu_time / num_cpus
+            return baseline_cpu_seconds / num_cpus
         else:
-            return init_cpu_time / 7
+            return baseline_cpu_seconds / 7
 
     @staticmethod
-    def _log_scale(num_cpus, init_cpu_time):
+    def _log_scale(num_cpus, baseline_cpu_seconds):
         scaling_factor = np.log(num_cpus) + 1
-        return init_cpu_time / scaling_factor
+        return baseline_cpu_seconds / scaling_factor
 
     @staticmethod
-    def _sqrt(num_cpus, init_cpu_time):
+    def _sqrt(num_cpus, baseline_cpu_seconds):
         scaling_factor = np.sqrt(num_cpus)
-        return init_cpu_time / scaling_factor
+        return baseline_cpu_seconds / scaling_factor
 
     @staticmethod
-    def _squared(num_cpus, init_cpu_time):
+    def _squared(num_cpus, baseline_cpu_seconds):
         scaling_factor = np.power(num_cpus, 2)
-        return init_cpu_time / scaling_factor
+        return baseline_cpu_seconds / scaling_factor
 
     @staticmethod
-    def _exponential_bnd(num_cpus, init_cpu_time):
+    def _exponential_bnd(num_cpus, baseline_cpu_seconds):
         scaling_factor = 16
         if num_cpus < 4:
             scaling_factor = np.power(2, num_cpus)
-        return init_cpu_time / scaling_factor
+        return baseline_cpu_seconds / scaling_factor
 
-class Segment(Node):
+
+class Segment:
     """
     The smallest unit of execution, a segment logically is a function in a
     language or a single or small set of SQL operators. This is where logic is
@@ -65,59 +66,83 @@ class Segment(Node):
                         "squared": ScalingFuncs._squared,
                         "exp":     ScalingFuncs._exponential_bnd,
                     }
-    def __init__(self, scaling, io=None, init_cpu_time=None, tick_length_secs=None):
-        super().__init__()
-        self.io = io # GB read into ram
-        self.init_cpu_time = init_cpu_time # time for one processor
-        self.tick_length_secs = tick_length_secs
-        if callable(scaling):
-            self.scaling = scaling
-            self.scaling_type = "callable"
-        elif scaling in Segment.SCALING_FUNCS:
-            self.scaling = scaling
-            self.scaling_type = "string"
+    def __init__(self, baseline_cpu_seconds=None, cpu_scaling=None, memory_gb=None, storage_read_gb=None):
+        self.baseline_cpu_seconds = baseline_cpu_seconds # time for one processor
+        self.memory_gb = memory_gb # GB of memory used (None means linear growth based on storage_read_gb)
+        self.storage_read_gb = storage_read_gb # GB read from storage
+        if callable(cpu_scaling):
+            self.scaling_func = cpu_scaling
+        elif cpu_scaling in Segment.SCALING_FUNCS:
+            self.scaling_func = Segment.SCALING_FUNCS[cpu_scaling]
         else:
-            raise EudoxiaException("Invalid scaling func passed to segment")
+            valid_options = "[<callable>|" + "|".join(Segment.SCALING_FUNCS.keys()) + "]"
+            raise EudoxiaException(f"Invalid scaling func passed to segment. Must be one of: {valid_options}")
 
-    # can be called by executor to make sure workload gen happened correctly
-    def is_initialized(self) -> bool:
-        if self.io is not None and self.cpu is not None and self.scaling is not None:
-            return True
-        return False
+    def get_io_seconds(self):
+        return self.storage_read_gb / DISK_SCAN_GB_SEC
 
-    def get_io_time(self):
-        return self.io / DISK_SCAN_GB_SEC
-
-    def get_io_ticks(self):
-        if self.tick_length_secs is None:
-            raise EudoxiaException("tick_length_secs not set for Segment")
-        io_time_secs = self.get_io_time()
-        io_time_ticks = int(io_time_secs / self.tick_length_secs)
-        return io_time_ticks
-
-    def scale_cpu_time(self, num_cpus):
-        if self.scaling_type == "callable":
-            return self.scaling(num_cpus, self.init_cpu_time)
+    def get_cpu_time(self, num_cpus):
+        return self.scaling_func(num_cpus, self.baseline_cpu_seconds)
+    
+    def get_peak_memory_gb(self):
+        """Get peak memory usage. Defaults to storage_read_gb if memory_gb not specified."""
+        return self.memory_gb if self.memory_gb is not None else self.storage_read_gb
+    
+    def get_seconds_until_oom(self, limit_gb):
+        """
+        Calculate when this segment will OOM given a memory limit.
+        
+        Args:
+            limit_gb: Memory limit in GB
+            
+        Returns:
+            float: Seconds until OOM occurs, or None if no OOM will occur
+            
+        Memory usage patterns:
+        1. If memory_gb is set: We use a fixed amount of memory from the start.
+           - Returns 0.0 if memory_gb > limit_gb (immediate OOM)
+           - Returns None if memory_gb <= limit_gb (no OOM)
+           
+        2. If memory_gb is None: Memory grows linearly as we read from storage.
+           - Memory grows at DISK_SCAN_GB_SEC rate
+           - OOM occurs when memory usage exceeds limit_gb
+           - Returns limit_gb / DISK_SCAN_GB_SEC (time to reach limit)
+           - Returns None if peak memory (storage_read_gb) <= limit_gb
+        """
+        if self.memory_gb is not None:
+            # Fixed memory usage pattern
+            if self.memory_gb > limit_gb:
+                return 0.0  # Immediate OOM
+            else:
+                return None  # No OOM
         else:
-            return Segment.SCALING_FUNCS[self.scaling](num_cpus, self.init_cpu_time)
-
-    def scale_cpu_time_ticks(self, num_cpus):
-        if self.tick_length_secs is None:
-            raise EudoxiaException("tick_length_secs not set for Segment")
-        cpu_time_secs = self.scale_cpu_time(num_cpus)
-        cpu_time_ticks = int(cpu_time_secs / self.tick_length_secs)
-        return cpu_time_ticks
-
+            # Linear memory growth pattern based on storage reads
+            if self.storage_read_gb <= limit_gb:
+                return None  # No OOM - peak memory within limit
+            
+            # Calculate when memory usage hits the limit
+            # Memory grows at DISK_SCAN_GB_SEC rate, so time to reach limit_gb:
+            oom_time = limit_gb / DISK_SCAN_GB_SEC
+            return oom_time
 
 
 class Operator(Node):
     """ 
     Operator is an encapsulation of many functions or a whole SQL query. Broader
-    nodes in the big picture DAG. This is represented as a Tree of Segments
+    nodes in the big picture DAG. This is represented as a list of Segments
     """
     def __init__(self):
         super().__init__()
-        self.values: DAG[Segment] = DAG()
+        self.values: List[Segment] = []
+    
+    def add_segment(self, segment: Segment):
+        """Add a segment to this operator"""
+        self.values.append(segment)
+    
+    def get_segments(self) -> List[Segment]:
+        """Get all segments in this operator"""
+        return self.values
+
 
 class Pipeline(Node):
     """ 

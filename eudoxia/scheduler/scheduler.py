@@ -1,7 +1,7 @@
 from typing import List, Tuple, Dict
 import uuid
 from eudoxia.executor import Executor
-from eudoxia.workload import Suspend, Assignment, Failure
+from eudoxia.executor.assignment import Suspend, Assignment, Failure
 from eudoxia.workload import Pipeline, Operator
 from eudoxia.utils import Priority
 from .decorators import INIT_ALGOS, SCHEDULING_ALGOS
