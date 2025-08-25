@@ -46,21 +46,20 @@ class Container:
         total_ticks = 0
         for op in self.operators:
             for seg in op.get_segments():
+                # will it OOM, and if so, when?
                 oom_seconds = seg.get_seconds_until_oom(self.ram)
+
                 if oom_seconds is not None:
-                    # set that the container throws an error when it hits this
-                    # many ticks
+                    # compute how long it it will be until the OOM occurs
                     self.error = "OOM"
                     seg_ticks_before_OOM = int(oom_seconds / self.tick_length_secs)
                     total_ticks += seg_ticks_before_OOM
-
-                io_time_secs = seg.get_io_seconds()
-                cpu_time_secs = seg.get_cpu_time(self.cpu)
-                scan_time_ticks = int(io_time_secs / self.tick_length_secs)
-                cpu_time_ticks = int(cpu_time_secs / self.tick_length_secs)
-
-                total_ticks += scan_time_ticks
-                total_ticks += cpu_time_ticks
+                else:
+                    # there is no OOM.  We will spend all the time
+                    # expected on I/O (first), then CPU (second)
+                    io_time_secs = seg.get_io_seconds()
+                    cpu_time_secs = seg.get_cpu_time(self.cpu)
+                    total_ticks += int((io_time_secs + cpu_time_secs) / self.tick_length_secs)
                 self.segment_tick_boundaries.append(total_ticks)
         return total_ticks
 
