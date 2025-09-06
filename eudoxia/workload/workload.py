@@ -23,6 +23,14 @@ class Workload(ABC):
         pass
 
 
+class PipelineArrival(NamedTuple):
+    """
+    Combines a Pipeline with its arrival time.
+    """
+    arrival_seconds: float
+    pipeline: Pipeline
+
+
 class WorkloadReader(ABC):
     """Abstract base class for workload readers that process pre-defined workloads"""
     
@@ -44,14 +52,6 @@ class WorkloadReader(ABC):
             WorkloadTrace: A WorkloadTrace that wraps this reader
         """
         return WorkloadTrace(self, tick_length_secs)
-
-
-class PipelineArrival(NamedTuple):
-    """
-    Combines a Pipeline with its arrival time.
-    """
-    arrival_seconds: float
-    pipeline: Pipeline
 
 
 class WorkloadGenerator(Workload):

@@ -1,8 +1,8 @@
 import csv
 from typing import List, Iterator, NamedTuple, Optional, TextIO
 from eudoxia.utils import Priority
-from .pipeline import Pipeline, PipelineArrival, Operator, Segment
-from .workload import WorkloadReader
+from .pipeline import Pipeline, Operator, Segment
+from .workload import WorkloadReader, PipelineArrival
 
 
 class CSVOperatorRow(NamedTuple):
