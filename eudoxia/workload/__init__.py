@@ -1,3 +1,4 @@
 from .workload import Workload, WorkloadGenerator
 from .pipeline import Operator, Pipeline, Segment
-from .csv_io import CSVWorkloadReader, OperatorRow
+from .csv_io import CSVWorkloadReader
+

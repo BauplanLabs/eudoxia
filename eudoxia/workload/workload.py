@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 import random
-from typing import List
+from typing import List, Iterator, NamedTuple, Optional
 from abc import ABC, abstractmethod
 from eudoxia.utils import Priority
 from .pipeline import Pipeline, Operator, Segment
@@ -21,6 +21,37 @@ class Workload(ABC):
             List[Pipeline]: List of pipelines arriving at this tick
         """
         pass
+
+
+class WorkloadReader(ABC):
+    """Abstract base class for workload readers that process pre-defined workloads"""
+    
+    @abstractmethod
+    def batch_by_arrival(self) -> Iterator[List[PipelineArrival]]:
+        """
+        Generator that yields batches of PipelineArrival objects grouped by arrival time.
+        
+        Yields:
+            List[PipelineArrival]: All pipeline arrivals that happen at the same time
+        """
+        pass
+    
+    def get_workload(self, tick_length_secs: float):
+        """
+        Get a Workload instance from this reader.
+        
+        Returns:
+            WorkloadTrace: A WorkloadTrace that wraps this reader
+        """
+        return WorkloadTrace(self, tick_length_secs)
+
+
+class PipelineArrival(NamedTuple):
+    """
+    Combines a Pipeline with its arrival time.
+    """
+    arrival_seconds: float
+    pipeline: Pipeline
 
 
 class WorkloadGenerator(Workload):
@@ -192,3 +223,44 @@ class WorkloadGenerator(Workload):
             return []
 
 
+class WorkloadTrace(Workload):
+    """Workload implementation that reads from a WorkloadReader and delivers pipelines based on tick timing"""
+    
+    def __init__(self, reader: 'WorkloadReader', tick_length_secs: float):
+        """Initialize with a WorkloadReader and tick length"""
+        self.reader = reader
+        self.tick_length_secs = tick_length_secs
+        self.current_tick = 0
+        self.next_batch: Optional[List[PipelineArrival]] = None
+        self._arrival_iterator = reader.batch_by_arrival()
+        self.advance_to_next_batch()  # Preload the first batch
+    
+    def get_next_batch_tick(self) -> int:
+        arrival_seconds = self.next_batch[0].arrival_seconds
+        return int(arrival_seconds / self.tick_length_secs)
+    
+    def advance_to_next_batch(self):
+        """Load the next batch from the iterator, or set to None if no more batches"""
+        try:
+            self.next_batch = next(self._arrival_iterator)
+        except StopIteration:
+            self.next_batch = None
+    
+    def run_one_tick(self) -> List[Pipeline]:
+        """
+        Return pipelines that should arrive at the current tick.
+        
+        Advances current_tick and returns all pipelines whose arrival time
+        is at or before the current tick.
+        """
+        pipelines_to_return = []
+        
+        # Get all batches that are ready for this tick or earlier
+        while self.next_batch is not None and self.get_next_batch_tick() <= self.current_tick:
+            # This batch is ready now
+            for pipeline_arrival in self.next_batch:
+                pipelines_to_return.append(pipeline_arrival.pipeline)
+            self.advance_to_next_batch()
+        
+        self.current_tick += 1
+        return pipelines_to_return
