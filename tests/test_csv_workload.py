@@ -56,11 +56,15 @@ class TestWorkloadTrace(unittest.TestCase):
             # Tick 1: nothing
             pipelines = trace.run_one_tick()
             self.assertEqual(len(pipelines), 0)
-            
-            # Tick 2: get p2 (arrival 2.5 converts to tick 2)
+
+            # Tick 2: nothing
+            pipelines = trace.run_one_tick()
+            self.assertEqual(len(pipelines), 0)
+
+            # Tick 3: get p2 because it arrives at 2.5 ticks
             pipelines = trace.run_one_tick()
             self.assertEqual(len(pipelines), 1)
-    
+
     def test_trace_multiple_same_tick(self):
         """Test multiple pipelines on same tick"""
         csv_data = "\n".join([
@@ -77,7 +81,11 @@ class TestWorkloadTrace(unittest.TestCase):
             pipelines = trace.run_one_tick()
             self.assertEqual(len(pipelines), 0)
             
-            # Tick 1: both pipelines
+            # Tick 1: nothing
+            pipelines = trace.run_one_tick()
+            self.assertEqual(len(pipelines), 0)
+            
+            # Tick 2: both pipelines
             pipelines = trace.run_one_tick()
             self.assertEqual(len(pipelines), 2)
 

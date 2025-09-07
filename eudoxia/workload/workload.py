@@ -235,9 +235,9 @@ class WorkloadTrace(Workload):
         self._arrival_iterator = reader.batch_by_arrival()
         self.advance_to_next_batch()  # Preload the first batch
     
-    def get_next_batch_tick(self) -> int:
+    def get_next_batch_tick(self) -> float:
         arrival_seconds = self.next_batch[0].arrival_seconds
-        return int(arrival_seconds / self.tick_length_secs)
+        return arrival_seconds / self.tick_length_secs
     
     def advance_to_next_batch(self):
         """Load the next batch from the iterator, or set to None if no more batches"""

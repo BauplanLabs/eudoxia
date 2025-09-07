@@ -7,11 +7,7 @@ from .workload import WorkloadReader, PipelineArrival
 
 class CSVOperatorRow(NamedTuple):
     """
-    Represents a single row from the CSV file.
-    
-    Note: Each row corresponds to an Operator, which contains exactly one Segment.
-    This is a design assumption that simplifies the CSV format - rather than having
-    separate rows for segments within operators, we assume a 1:1 relationship.
+    Columns expected by a CSVWorkloadReader
     """
     pipeline_id: str
     arrival_seconds: float
