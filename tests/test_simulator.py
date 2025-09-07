@@ -1,6 +1,6 @@
 import pytest
 from typing import Dict, List
-from eudoxia.main import run_simulator, get_param_defaults
+from eudoxia.simulator import run_simulator, get_param_defaults
 from eudoxia.workload import Workload, Pipeline
 from eudoxia.utils import Priority
 
