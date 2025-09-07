@@ -1,3 +1,5 @@
 venv/
 eudoxia.egg-info/
 build/
+*~
+__pycache__
