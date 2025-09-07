@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from eudoxia.workload import WorkloadGenerator
-from eudoxia.main import get_param_defaults
+from eudoxia.simulator import get_param_defaults
 
 
 def test_workload_generator_determinism():

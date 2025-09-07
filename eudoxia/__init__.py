@@ -21,8 +21,8 @@ else:
     logger.info(f"Loaded logging config from {src}")
 
 
-from . import main
-from .main import *
+from . import simulator
+from .simulator import *
 
 __all__ = []
-__all__ += main.__all__
+__all__ += simulator.__all__
