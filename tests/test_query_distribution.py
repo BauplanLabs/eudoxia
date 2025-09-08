@@ -30,7 +30,6 @@ def test_query_distribution_priorities():
         params[param_key] = 1    # 100% this type, nothing else
         params["waiting_ticks_mean"] = 1  # Generate pipelines frequently
         params["num_pipelines"] = 2  # Generate 2 per event
-        params["rng"] = np.random.default_rng(params["random_seed"])
         gen = WorkloadGenerator(**params)
 
         tick = 0

@@ -197,11 +197,8 @@ class CSVWorkloadWriter:
             'pipeline_id', 'arrival_seconds', 'priority', 'operator_id', 'parents',
             'baseline_cpu_seconds', 'cpu_scaling', 'memory_gb', 'storage_read_gb'
         ])
-    
-    def write_header(self):
-        """Write the CSV header row"""
         self.writer.writeheader()
-    
+
     def write_row(self, row: CSVOperatorRow):
         """Write a single CSVOperatorRow to the file"""
         self.writer.writerow({

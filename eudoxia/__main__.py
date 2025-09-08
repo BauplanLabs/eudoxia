@@ -1,6 +1,8 @@
 import argparse
 import sys
 import tomllib
+import numpy as np
+from io import StringIO
 from pathlib import Path
 from eudoxia.simulator import run_simulator, parse_args_with_defaults
 from eudoxia.workload.csv_io import CSVWorkloadReader, CSVWorkloadWriter, WorkloadTraceGenerator
@@ -9,31 +11,28 @@ from eudoxia.workload import WorkloadGenerator
 
 def run_command(args):
     """Handle the run subcommand"""
-    workload = None
+
+    with open(args.params_file, 'rb') as f:
+        params = tomllib.load(f)
+    params = parse_args_with_defaults(params)
+
     if args.workload:
+        # base workload on trace file
         workload_path = Path(args.workload)
         if not workload_path.exists():
             print(f"Error: Workload file '{args.workload}' not found", file=sys.stderr)
             sys.exit(1)
         
-        # Load params to get tick_length_secs
-        with open(args.params_file, 'rb') as param_file:
-            params = tomllib.load(param_file)
-        params = parse_args_with_defaults(params)
-        
-        # Create workload from CSV
-        # Read file content first since WorkloadTrace will iterate during simulation
-        with open(workload_path, 'r') as f:
-            csv_content = f.read()
-        
-        from io import StringIO
-        csv_file = StringIO(csv_content)
-        reader = CSVWorkloadReader(csv_file)
-        workload = reader.get_workload(params['tick_length_secs'])
-    
-    # Run the simulation
-    stats = run_simulator(args.params_file, workload=workload)
-    
+        with open(workload_path) as f:
+            # TODO: don't assume CSV
+            reader = CSVWorkloadReader(f)
+            workload = reader.get_workload(params['tick_length_secs'])
+            # workload is based on trace
+            stats = run_simulator(params, workload=workload)
+    else:
+        # generate workload on the fly
+        stats = run_simulator(params)
+
     print(f"Simulation completed:")
     print(f"  Pipelines created: {stats.pipelines_created}")
     print(f"  Pipelines completed: {stats.pipelines_completed}")
@@ -45,31 +44,27 @@ def run_command(args):
 def gentrace_command(args):
     """Handle the gentrace subcommand"""
     # Load and parse parameters
-    with open(args.params_file, 'rb') as param_file:
-        params = tomllib.load(param_file)
+    with open(args.params_file, 'rb') as f:
+        params = tomllib.load(f)
     params = parse_args_with_defaults(params)
-    
-    # Create WorkloadGenerator
-    import numpy as np
-    if "rng" not in params:
-        params["rng"] = np.random.default_rng(params["random_seed"])
+
+    # Randomly generated workload
     workload = WorkloadGenerator(**params)
     
-    # Generate trace
+    # Workload => Trace
     trace_generator = WorkloadTraceGenerator(
         workload=workload,
         tick_length_secs=params['tick_length_secs'],
         duration_secs=params['duration']
     )
-    
-    # Write to CSV
-    with open(args.output_file, 'w', newline='') as f:
+
+    # Write Trace to CSV
+    with open(args.output_file, 'w') as f:
         writer = CSVWorkloadWriter(f)
-        writer.write_header()
-        
+
         for row in trace_generator.generate_rows():
             writer.write_row(row)
-    
+
     print(f"Generated workload trace saved to {args.output_file}")
 
 

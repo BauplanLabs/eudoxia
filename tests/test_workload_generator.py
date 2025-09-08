@@ -25,11 +25,10 @@ def test_workload_generator_determinism():
     
     # Create two generators with the same seed
     seed = 42
-    rng1 = np.random.Generator(np.random.PCG64(seed))
-    rng2 = np.random.Generator(np.random.PCG64(seed))
+    params['random_seed'] = seed
     
-    gen1 = WorkloadGenerator(rng=rng1, **params)
-    gen2 = WorkloadGenerator(rng=rng2, **params)
+    gen1 = WorkloadGenerator(**params)
+    gen2 = WorkloadGenerator(**params)
     
     # Run until we get at least 5 cases where pipelines are generated
     pipeline_cases = 0

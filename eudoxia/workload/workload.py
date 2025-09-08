@@ -60,7 +60,7 @@ class WorkloadGenerator(Workload):
     """
     def __init__(self, waiting_ticks_mean, num_pipelines, num_operators,
                  parallel_factor, num_segs, cpu_io_ratio, 
-                 rng: np.random.Generator, batch_prob, query_prob,
+                 random_seed, batch_prob, query_prob,
                  interactive_prob, tick_length_secs, **kwargs):
 
         assert cpu_io_ratio <= 1.0 and cpu_io_ratio >= 0, "invalid CPU-IO ratio parameter"
@@ -71,7 +71,7 @@ class WorkloadGenerator(Workload):
         self.curr_waiting_ticks = 0
 
         # Random generator seeded with param seed
-        self.rng = rng
+        self.rng = np.random.default_rng(random_seed)
         # probabilities of interactive, query, batch pipelines
         # normalized so that when cast to np float probs sum to 1, per np notes:
         # https://numpy.org/doc/stable/reference/random/generated/numpy.random.Generator.choice.html
