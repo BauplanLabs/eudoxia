@@ -223,6 +223,52 @@ class WorkloadTraceGenerator:
         self.tick_length_secs = tick_length_secs
         self.max_ticks = int(duration_secs / tick_length_secs)
     
+    def _pipeline_to_rows(self, pipeline: Pipeline, pipeline_id: str, arrival_seconds: float) -> Iterator[CSVOperatorRow]:
+        """Convert a single pipeline to CSVOperatorRow objects"""
+        # Convert pipeline DAG to flat list of operators with parent relationships
+        operators = list(pipeline.values.node_lookup.values())
+        
+        for i, operator in enumerate(operators):
+            operator_id = f"op{i+1}"
+            
+            # Determine parent operator IDs
+            parent_ids = []
+            for parent in operator.parents:
+                parent_idx = operators.index(parent)
+                parent_ids.append(f"op{parent_idx+1}")
+            parents_str = ';'.join(parent_ids)
+            
+            # Get segment info (assuming 1:1 operator-segment relationship)
+            segments = operator.get_segments()
+            if len(segments) != 1:
+                raise ValueError(f"Expected exactly 1 segment per operator, but operator {operator_id} in pipeline {pipeline_id} has {len(segments)} segments")
+            segment = segments[0]
+            
+            # Find scaling function name by reverse lookup
+            cpu_scaling = None
+            for name, func in Segment.SCALING_FUNCS.items():
+                if func == segment.scaling_func:
+                    cpu_scaling = name
+                    break
+            
+            if cpu_scaling is None:
+                raise ValueError(f"Could not find scaling function name for operator {operator_id} in pipeline {pipeline_id}. Unknown scaling function: {segment.scaling_func}")
+            
+            # Priority only in first row of each pipeline
+            priority = pipeline.priority.name if i == 0 else ''
+            
+            yield CSVOperatorRow(
+                pipeline_id=pipeline_id,
+                arrival_seconds=arrival_seconds,
+                priority=priority,
+                operator_id=operator_id,
+                parents=parents_str,
+                baseline_cpu_seconds=segment.baseline_cpu_seconds,
+                cpu_scaling=cpu_scaling,
+                memory_gb=segment.memory_gb,
+                storage_read_gb=segment.storage_read_gb
+            )
+    
     def generate_rows(self) -> Iterator[CSVOperatorRow]:
         """Generate CSVOperatorRow objects from the workload"""
         pipeline_counter = 0
@@ -235,40 +281,4 @@ class WorkloadTraceGenerator:
                 pipeline_counter += 1
                 pipeline_id = f"p{pipeline_counter}"
                 
-                # Convert pipeline DAG to flat list of operators with parent relationships
-                operators = list(pipeline.values.node_lookup.values())
-                
-                for i, operator in enumerate(operators):
-                    operator_id = f"op{i+1}"
-                    
-                    # Determine parent operator IDs
-                    parent_ids = []
-                    for parent in operator.parents:
-                        parent_idx = operators.index(parent)
-                        parent_ids.append(f"op{parent_idx+1}")
-                    parents_str = ';'.join(parent_ids)
-                    
-                    # Get segment info (assuming 1:1 operator-segment relationship)
-                    segment = operator.get_segments()[0]
-                    
-                    # Find scaling function name by reverse lookup
-                    cpu_scaling = 'unknown'
-                    for name, func in Segment.SCALING_FUNCS.items():
-                        if func == segment.scaling_func:
-                            cpu_scaling = name
-                            break
-                    
-                    # Priority only in first row of each pipeline
-                    priority = pipeline.priority.name if i == 0 else ''
-                    
-                    yield CSVOperatorRow(
-                        pipeline_id=pipeline_id,
-                        arrival_seconds=arrival_seconds,
-                        priority=priority,
-                        operator_id=operator_id,
-                        parents=parents_str,
-                        baseline_cpu_seconds=segment.baseline_cpu_seconds,
-                        cpu_scaling=cpu_scaling,
-                        memory_gb=segment.memory_gb,
-                        storage_read_gb=segment.storage_read_gb
-                    )
+                yield from self._pipeline_to_rows(pipeline, pipeline_id, arrival_seconds)

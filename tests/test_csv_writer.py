@@ -30,11 +30,9 @@ class TestCSVWorkloadWriter(unittest.TestCase):
         
         output_csv = io.StringIO()
         writer = CSVWorkloadWriter(output_csv)
-        writer.write_header()
-        
         for row in trace_generator.generate_rows():
             writer.write_row(row)
-        
+
         # Compare the CSVs
         generated_csv = output_csv.getvalue()
         
