@@ -129,12 +129,14 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     assert params["cpu_io_ratio"] <= 1 and params["cpu_io_ratio"] >= 0, \
         "CPU IO ratio must be between 0 and 1"
     
-    if not "rng" in params:
-        params["rng"] = np.random.default_rng(params["random_seed"])
-
     # INITIALIZATION
     if workload is None:
         workload = WorkloadGenerator(**params)
+    
+    # Create rng for components that still need it (like Executor)
+    if "rng" not in params:
+        params["rng"] = np.random.default_rng(params["random_seed"])
+    
     executor = Executor(**params)
     scheduler = Scheduler(executor, scheduler_algo=params["scheduler_algo"])
 

@@ -26,11 +26,11 @@ class TestCommandLine(unittest.TestCase):
             # Should not raise an exception
             main(['run', params_file])
             
-            # Verify run_simulator was called with params file and no workload
+            # Verify run_simulator was called with params dict and no workload
             mock_run.assert_called_once()
             args = mock_run.call_args
-            self.assertEqual(args[0][0], params_file)  # First arg is params file
-            self.assertIsNone(args[1]['workload'])  # workload keyword arg is None
+            self.assertIsInstance(args[0][0], dict)  # First arg is params dict
+            # No workload keyword arg passed (defaults to None in run_simulator)
 
     # TODO: instead of mocking it out, pass in a simple workload that will have
     # predictable results on a naive scheduler, then make sure outputs are correct
@@ -63,10 +63,10 @@ class TestCommandLine(unittest.TestCase):
             # Should not raise an exception
             main(['run', params_file, '-w', workload_file])
 
-            # Verify run_simulator was called with params file and workload
+            # Verify run_simulator was called with params dict and workload
             mock_run.assert_called_once()
             args = mock_run.call_args
-            self.assertEqual(args[0][0], params_file)  # First arg is params file
+            self.assertIsInstance(args[0][0], dict)  # First arg is params dict
             self.assertIsNotNone(args[1]['workload'])  # workload keyword arg is not None
 
 
