@@ -19,14 +19,12 @@ The main method to run the simulator. There are three core entities, WorkloadGen
 - `TOMLDecodeError`: If the file is not in proper TOML format 
 
 ## Paramaters
-- `waiting_ticks_mean`: how many ticks the dispatcher will wait between generating pipelines
-    - Default: `1,000,000`
+- `waiting_seconds_mean`: how many seconds on average the dispatcher will wait between generating pipelines
+    - Default: `10.0`
 - `num_piplines`: mean number of pipelines to generate when pipelines created
     - Default: `4`
 - `num_operators`: mean number of operators per pipelines
     - Default: `5`
-- `parallel_factor`: **NOT IN USE.** How many disjoint subtrees there are in a pipelines
-    - Default: `1`
 - `num_segs`: **NOT IN USE all operators have single segment** number of segments per operator
     - Default: `1`
 - The following three dictate probabilities for different query types (interactive, query, batch). They ***must*** sum to 1

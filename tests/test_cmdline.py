@@ -38,7 +38,7 @@ class TestCommandLine(unittest.TestCase):
         """Test run command with params and workload files"""
         # Create temporary params file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
-            f.write('duration = 0.001\ntick_length_secs = 0.01\n')
+            f.write('duration = 0.001\nticks_per_second = 100\n')
             params_file = f.name
         
         # Create temporary workload CSV

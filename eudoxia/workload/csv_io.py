@@ -217,11 +217,12 @@ class CSVWorkloadWriter:
 class WorkloadTraceGenerator:
     """Helper class to convert Workload instances to CSVOperatorRow objects"""
     
-    def __init__(self, workload, tick_length_secs: float, duration_secs: float):
+    def __init__(self, workload, ticks_per_second: int, duration_secs: float):
         """Initialize with a Workload instance and simulation parameters"""
         self.workload = workload
-        self.tick_length_secs = tick_length_secs
-        self.max_ticks = int(duration_secs / tick_length_secs)
+        self.ticks_per_second = ticks_per_second
+        self.tick_length_secs = 1.0 / ticks_per_second
+        self.max_ticks = int(duration_secs * ticks_per_second)
     
     def _pipeline_to_rows(self, pipeline: Pipeline, pipeline_id: str, arrival_seconds: float) -> Iterator[CSVOperatorRow]:
         """Convert a single pipeline to CSVOperatorRow objects"""

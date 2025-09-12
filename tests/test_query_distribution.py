@@ -28,7 +28,7 @@ def test_query_distribution_priorities():
         params["query_prob"] = 0
         params["batch_prob"] = 0
         params[param_key] = 1    # 100% this type, nothing else
-        params["waiting_ticks_mean"] = 1  # Generate pipelines frequently
+        params["waiting_seconds_mean"] = 0.00001  # Generate pipelines frequently
         params["num_pipelines"] = 2  # Generate 2 per event
         gen = WorkloadGenerator(**params)
 

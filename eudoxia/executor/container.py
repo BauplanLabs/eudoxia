@@ -14,7 +14,7 @@ class Container:
     created and then calculates how many ticks it will need to run with
     resources provided. 
     """
-    def __init__(self, ram, cpu, ops, prty: Priority, pool_id: int, rng: np.random.Generator, tick_length_secs: float):
+    def __init__(self, ram, cpu, ops, prty: Priority, pool_id: int, rng: np.random.Generator, ticks_per_second: int):
         self.cid = uuid.UUID(bytes=rng.bytes(16))
         self.pool_id = pool_id
         self.ram = ram
@@ -25,7 +25,8 @@ class Container:
         self._suspend_ticks_left = None
         self.priority = prty
         self.error: str = None
-        self.tick_length_secs = tick_length_secs
+        self.ticks_per_second = ticks_per_second
+        self.tick_length_secs = 1.0 / ticks_per_second
 
         self.num_ticks = self._compute_ticks() 
         self._num_ticks_left = self.num_ticks
