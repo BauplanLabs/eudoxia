@@ -10,7 +10,7 @@ class CSVOperatorRow(NamedTuple):
     Columns expected by a CSVWorkloadReader
     """
     pipeline_id: str
-    arrival_seconds: float
+    arrival_seconds: Optional[float]  # Only set for first operator of each pipeline
     priority: str
     operator_id: str
     parents: str  # semicolon-separated list of parent operator_ids
@@ -30,7 +30,7 @@ class CSVWorkloadReader(WorkloadReader):
     
     Expected CSV columns:
     - pipeline_id: identifier for the pipeline
-    - arrival_seconds: when this pipeline arrives in the system
+    - arrival_seconds: when this pipeline arrives in the system - only set in first row of each pipeline, blank in subsequent rows
     - priority: pipeline priority ("INTERACTIVE", "QUERY", "BATCH_PIPELINE") - only set in first row of each pipeline, blank in subsequent rows
     - operator_id: identifier for the operator within the pipeline  
     - parents: semicolon-separated list of parent operator_ids (empty for root)
@@ -124,18 +124,22 @@ class CSVWorkloadReader(WorkloadReader):
         priority_str = batch[0].priority
         priority = Priority[priority_str]
         
-        # Verify all rows have the same pipeline_id and priority pattern (first row has priority, others blank)
+        # Verify all rows have the same pipeline_id and correct priority/arrival pattern
         for i, row in enumerate(batch):
             if row.pipeline_id != pipeline_id:
                 raise ValueError(f"All rows in batch must have same pipeline_id: {row.pipeline_id} != {pipeline_id}")
             if i == 0:
-                # First row must have priority set
+                # First row must have priority and arrival_seconds set
                 if not row.priority:
                     raise ValueError(f"First row of pipeline {pipeline_id} must have priority set")
+                if row.arrival_seconds is None:
+                    raise ValueError(f"First row of pipeline {pipeline_id} must have arrival_seconds set")
             else:
-                # Subsequent rows must have blank priority
+                # Subsequent rows must have blank priority and arrival_seconds
                 if row.priority:
                     raise ValueError(f"Only first row of pipeline {pipeline_id} should have priority set, found '{row.priority}' in row {i+1}")
+                if row.arrival_seconds is not None:
+                    raise ValueError(f"Only first row of pipeline {pipeline_id} should have arrival_seconds set, found '{row.arrival_seconds}' in row {i+1}")
         
         # Create the pipeline
         pipeline = Pipeline(priority)
@@ -174,9 +178,13 @@ class CSVWorkloadReader(WorkloadReader):
 
     def _parse_row(self, row_dict: dict) -> CSVOperatorRow:
         """Convert a dictionary row from DictReader to CSVOperatorRow namedtuple"""
+        # Handle arrival_seconds - only first operator should have it, others should be empty
+        arrival_str = row_dict.get('arrival_seconds', '').strip()
+        arrival_seconds = float(arrival_str) if arrival_str else None
+        
         return CSVOperatorRow(
             pipeline_id=row_dict['pipeline_id'],
-            arrival_seconds=float(row_dict['arrival_seconds']),
+            arrival_seconds=arrival_seconds,
             priority=row_dict.get('priority', '').strip(),
             operator_id=row_dict['operator_id'],
             parents=row_dict.get('parents', '').strip(),
@@ -203,7 +211,7 @@ class CSVWorkloadWriter:
         """Write a single CSVOperatorRow to the file"""
         self.writer.writerow({
             'pipeline_id': row.pipeline_id,
-            'arrival_seconds': row.arrival_seconds,
+            'arrival_seconds': row.arrival_seconds if row.arrival_seconds is not None else '',
             'priority': row.priority,
             'operator_id': row.operator_id,
             'parents': row.parents,
@@ -255,12 +263,13 @@ class WorkloadTraceGenerator:
             if cpu_scaling is None:
                 raise ValueError(f"Could not find scaling function name for operator {operator_id} in pipeline {pipeline_id}. Unknown scaling function: {segment.scaling_func}")
             
-            # Priority only in first row of each pipeline
+            # Priority and arrival_seconds only in first row of each pipeline
             priority = pipeline.priority.name if i == 0 else ''
+            arrival = arrival_seconds if i == 0 else None
             
             yield CSVOperatorRow(
                 pipeline_id=pipeline_id,
-                arrival_seconds=arrival_seconds,
+                arrival_seconds=arrival,
                 priority=priority,
                 operator_id=operator_id,
                 parents=parents_str,

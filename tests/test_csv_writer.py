@@ -11,10 +11,10 @@ class TestCSVWorkloadWriter(unittest.TestCase):
         original_csv = "\n".join([
             "pipeline_id,arrival_seconds,priority,operator_id,parents,baseline_cpu_seconds,cpu_scaling,memory_gb,storage_read_gb",
             "p1,0.0,QUERY,op1,,15.0,linear3,,35.0",
-            "p1,0.0,,op2,op1,10.0,sqrt,,20.0",
+            "p1,,,op2,op1,10.0,sqrt,,20.0",
             "p2,1.0,BATCH_PIPELINE,op1,,5.0,const,,45.0",
-            "p2,1.0,,op2,op1,8.0,linear7,,25.0",
-            "p2,1.0,,op3,op2,12.0,squared,,30.0",
+            "p2,,,op2,op1,8.0,linear7,,25.0",
+            "p2,,,op3,op2,12.0,squared,,30.0",
             "p3,2.0,INTERACTIVE,op1,,20.0,const,,40.0"
         ])
         
