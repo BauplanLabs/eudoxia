@@ -2,6 +2,8 @@ import logging
 import logging.config
 import tomllib
 import sys
+from . import simulator
+from .simulator import *
 
 logging_config = None
 src = "logging.conf"
@@ -15,14 +17,6 @@ except:
 logging.basicConfig(**logging_config)
 logger = logging.getLogger(__name__)
 
-if src is None:
-    logger.info("No logging config passed in; used default basicConfig params")
-else:
-    logger.info(f"Loaded logging config from {src}")
-
-
-from . import simulator
-from .simulator import *
 
 __all__ = []
 __all__ += simulator.__all__
