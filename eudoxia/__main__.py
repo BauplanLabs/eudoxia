@@ -4,13 +4,19 @@ import tomllib
 import numpy as np
 from io import StringIO
 from pathlib import Path
-from eudoxia.simulator import run_simulator, parse_args_with_defaults
+from eudoxia.simulator import run_simulator, parse_args_with_defaults, get_param_defaults
 from eudoxia.workload.csv_io import CSVWorkloadReader, CSVWorkloadWriter, WorkloadTraceGenerator
 from eudoxia.workload import WorkloadGenerator
+import tomlkit
 
 
 def run_command(args):
     """Handle the run subcommand"""
+    
+    # Check if params file exists
+    if not Path(args.params_file).exists():
+        print(f"Error: Parameters file '{args.params_file}' not found", file=sys.stderr)
+        sys.exit(1)
 
     with open(args.params_file, 'rb') as f:
         params = tomllib.load(f)
@@ -43,6 +49,18 @@ def run_command(args):
 
 def gentrace_command(args):
     """Handle the gentrace subcommand"""
+    
+    # Check if params file exists
+    if not Path(args.params_file).exists():
+        print(f"Error: Parameters file '{args.params_file}' not found", file=sys.stderr)
+        sys.exit(1)
+    
+    # Check if output file already exists
+    output_path = Path(args.output_file)
+    if output_path.exists() and not args.force:
+        print(f"Error: File '{args.output_file}' already exists. Use -f/--force to overwrite.", file=sys.stderr)
+        sys.exit(1)
+    
     # Load and parse parameters
     with open(args.params_file, 'rb') as f:
         params = tomllib.load(f)
@@ -68,6 +86,29 @@ def gentrace_command(args):
     print(f"Generated workload trace saved to {args.output_file}")
 
 
+def init_command(args):
+    """Handle the init subcommand"""
+    output_path = Path(args.output_file)
+    
+    # Check if file already exists
+    if output_path.exists() and not args.force:
+        print(f"Error: File '{args.output_file}' already exists. Use --force to overwrite.", file=sys.stderr)
+        sys.exit(1)
+    
+    # Get default parameters
+    defaults = get_param_defaults()
+    
+    # Create TOML table and update with defaults
+    t = tomlkit.table()
+    t.update(defaults)
+    
+    # Write to file
+    with open(output_path, 'w') as f:
+        tomlkit.dump(t, f)
+    
+    print(f"Created default parameters file: {args.output_file}")
+
+
 def main(argv):
     parser = argparse.ArgumentParser(
         prog='python3 -m eudoxia',
@@ -85,6 +126,12 @@ def main(argv):
     gentrace_parser = subparsers.add_parser('gentrace', help='Generate CSV workload trace from parameters')
     gentrace_parser.add_argument('params_file', help='Path to TOML parameters file')
     gentrace_parser.add_argument('output_file', help='Path to output CSV workload file')
+    gentrace_parser.add_argument('-f', '--force', action='store_true', help='Overwrite existing file')
+    
+    # Init subcommand
+    init_parser = subparsers.add_parser('init', help='Create TOML file with default parameters')
+    init_parser.add_argument('output_file', help='Path to output TOML parameters file')
+    init_parser.add_argument('-f', '--force', action='store_true', help='Overwrite existing file')
     
     args = parser.parse_args(argv)
     
@@ -92,17 +139,14 @@ def main(argv):
         parser.print_help()
         sys.exit(1)
     
-    # Check if params file exists
-    if not Path(args.params_file).exists():
-        print(f"Error: Parameters file '{args.params_file}' not found", file=sys.stderr)
-        sys.exit(1)
-    
     if args.command == 'run':
         run_command(args)
     elif args.command == 'gentrace':
         gentrace_command(args)
+    elif args.command == 'init':
+        init_command(args)
     else:
-        print(f"Error: Unknown command '{args.command}'. Available commands: run, gentrace", file=sys.stderr)
+        print(f"Error: Unknown command '{args.command}'. Available commands: run, gentrace, init", file=sys.stderr)
         sys.exit(1)
 
 
