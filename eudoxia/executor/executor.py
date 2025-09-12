@@ -11,6 +11,9 @@ class Executor:
     Manager of a pool of resources and active containers, the Executor takes
     assignments and ensures that all costs and resources are accounted for and
     additional are allocated if instructed.
+    
+    Acts like a cluster manager that keeps track of utilization of machines
+    (that is, resource pools).
     """
     def __init__(self, num_pools, cpu_pool, ram_pool, rng, ticks_per_second, **kwargs):
         # total amount of resources allocated

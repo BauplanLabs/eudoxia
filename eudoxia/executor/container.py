@@ -12,7 +12,7 @@ class Container:
     """
     An encapsulation of CPU, RAM, and a list of operators. A container is
     created and then calculates how many ticks it will need to run with
-    resources provided. 
+    resources provided.
     """
     def __init__(self, ram, cpu, ops, prty: Priority, pool_id: int, rng: np.random.Generator, ticks_per_second: int):
         self.cid = uuid.UUID(bytes=rng.bytes(16))

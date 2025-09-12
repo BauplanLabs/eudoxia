@@ -1,5 +1,6 @@
 import tomllib
 import logging
+from collections import defaultdict
 from typing import List, Dict, Union, NamedTuple
 import numpy as np
 
@@ -14,9 +15,12 @@ class SimulatorStats(NamedTuple):
     """Statistics returned from a simulator run"""
     pipelines_created: int
     pipelines_completed: int
-    oom_failures: int
     throughput: float
     p99_latency: float
+    assignments: int
+    suspensions: int
+    failures: int
+    failure_error_counts: int
 
 logger = logging.getLogger(__name__)
 
@@ -142,31 +146,44 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     logger.info(f"Running for {params['duration']}s or {max_ticks} ticks")
     logger.info(f"Running with random seed {params['random_seed']}")
 
+    # a pipeline may have many operators.  These can get grouped
+    # together into some number of containers, which are assigned to
+    # run on machines (that is, resource pools).  These containers
+    # may fail or be suspended.
     num_pipelines_created = 0
-    failures = []
-    while tick_number < max_ticks:
-        pipelines: List[Pipeline] = workload.run_one_tick()
-        num_pipelines_created += len(pipelines)
-        suspensions, assignments = scheduler.run_one_tick(failures, pipelines)
-        failures = executor.run_one_tick(suspensions, assignments)
+    num_assignments = 0
+    num_suspenions = 0
+    num_failures = 0
+    failure_error_counts = defaultdict(int)
 
-        tick_number += 1
+    executor_failures = []
+
+    # IMPORTANT!  This is the main simulation loop.
+    for tick_number in range(max_ticks):
+        new_pipelines: List[Pipeline] = workload.run_one_tick()
+        suspensions, assignments = scheduler.run_one_tick(executor_failures, new_pipelines)
+        executor_failures = executor.run_one_tick(suspensions, assignments)
+
+        # track stats
+        num_pipelines_created += len(new_pipelines)
+        num_assignments += len(assignments)
+        num_suspenions += len(suspensions)
+        num_failures += len(executor_failures)
+        for failure in executor_failures:
+            failure_error_counts[failure.error] += 1
 
     # TODO: better way to calculate work thruput, going by num ops, etc. is
     # going to skew towards more smaller jobs
-    oom = getattr(scheduler, 'oom_failed_to_run', 0) 
-    thruput = executor.num_completed() / params['duration']
+    throughput = executor.num_completed() / params['duration']
     p99 = np.percentile(executor.container_tick_times(), 99) / params["ticks_per_second"]
-    logger.info(f"Ran for {params['duration']} seconds or {max_ticks} ticks")
-    logger.info(f"Created {num_pipelines_created} pipelines")
-    logger.info(f"{oom} pipelines couldn't run w/o using >50% of system RAM")
-    logger.info(f"Completed {executor.num_completed()} pipelines with a thruput of {thruput}")
-    logger.info(f"{p99:.2f}s p99 latency")
-    
+
     return SimulatorStats(
         pipelines_created=num_pipelines_created,
         pipelines_completed=executor.num_completed(),
-        oom_failures=oom,
-        throughput=thruput,
-        p99_latency=p99
+        throughput=throughput,
+        p99_latency=p99,
+        assignments=num_assignments,
+        suspensions=num_suspenions,
+        failures=num_failures,
+        failure_error_counts=dict(failure_error_counts),
     )
