@@ -57,7 +57,7 @@ Pipelines are also annotated with the context in which they were submitted. This
 For example, consider an ML pipeline which first executes a SQL query on underlying data in a Parquet file to extract data in a certain format, that data is then passed to a python function which performs some normalization steps and loads it into a numpy array, and finally that array is passed to a python function which trains a simple regression model on the data prepared. This entire job would be represented as a single `Pipeline` comprised of 3 `Operators`, one for the SQL, one for the preparation/normalization, one for the training, and each operator is comprised of a single `Segment` which represents the actual IO and CPU resources consumed when the function runs. 
 
 ## Ticks 
-Each iteration of the simulator is logically defined as a `Tick`. The duration of each tick is configurable via the `tick_length_secs` parameter in your `params.toml` file, with a default of 10 microseconds. This allows you to adjust the simulation granularity based on your needs - shorter ticks provide more precise simulation at the cost of longer execution time.  
+Each iteration of the simulator is logically defined as a `Tick`. The tick frequency is configurable via the `ticks_per_second` parameter in your `params.toml` file, with a default of 100,000 ticks per second (equivalent to 10 microseconds per tick). This allows you to adjust the simulation granularity based on your needs - higher tick frequencies provide more precise simulation at the cost of longer execution time.  
 
 ## Modules
 There are three main modules each of which implement a `run_one_tick` function:

@@ -14,14 +14,15 @@ class ResourcePool:
     assignments and ensures that all costs and resources are accounted for and
     additional are allocated if instructed.
     """
-    def __init__(self, pool_id, cpu_pool, ram_pool, rng, tick_length_secs, **kwargs):
+    def __init__(self, pool_id, cpu_pool, ram_pool, rng, ticks_per_second, **kwargs):
         self.pool_id = pool_id
         self.max_cpu_pool = cpu_pool
         self.max_ram_pool = ram_pool
         self.avail_cpu_pool = cpu_pool
         self.avail_ram_pool = ram_pool
         self.rng = rng
-        self.tick_length_secs = tick_length_secs
+        self.ticks_per_second = ticks_per_second
+        self.tick_length_secs = 1.0 / ticks_per_second
 
         # List of actively running and suspended containers
         self.active_containers: List[Container] = [] 
@@ -98,7 +99,7 @@ class ResourcePool:
             for a in assignments:
                 container = Container(ram=a.ram, cpu=a.cpu, ops=a.ops,
                                       prty=a.priority, pool_id=self.pool_id, rng=self.rng,
-                                      tick_length_secs=self.tick_length_secs)
+                                      ticks_per_second=self.ticks_per_second)
                 self.avail_cpu_pool -= a.cpu
                 self.avail_ram_pool -= a.ram
                 self.active_containers.append(container)

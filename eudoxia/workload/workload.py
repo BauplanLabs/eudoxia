@@ -44,30 +44,31 @@ class WorkloadReader(ABC):
         """
         pass
     
-    def get_workload(self, tick_length_secs: float):
+    def get_workload(self, ticks_per_second: int):
         """
         Get a Workload instance from this reader.
         
         Returns:
             WorkloadTrace: A WorkloadTrace that wraps this reader
         """
-        return WorkloadTrace(self, tick_length_secs)
+        return WorkloadTrace(self, ticks_per_second)
 
 
 class WorkloadGenerator(Workload):
     """
     Class to generate workloads according to user and default parameters
     """
-    def __init__(self, waiting_ticks_mean, num_pipelines, num_operators,
-                 parallel_factor, num_segs, cpu_io_ratio, 
+    def __init__(self, waiting_seconds_mean, num_pipelines, num_operators,
+                 num_segs, cpu_io_ratio, 
                  random_seed, batch_prob, query_prob,
-                 interactive_prob, tick_length_secs, **kwargs):
+                 interactive_prob, ticks_per_second, **kwargs):
 
         assert cpu_io_ratio <= 1.0 and cpu_io_ratio >= 0, "invalid CPU-IO ratio parameter"
-        self.tick_length_secs = tick_length_secs
+        self.ticks_per_second = ticks_per_second
+        self.tick_length_secs = 1.0 / ticks_per_second
         self.ticks_since_last_gen = 0
-        self.waiting_ticks_mean = waiting_ticks_mean
-        self.waiting_ticks_stdev = waiting_ticks_mean / 4
+        self.waiting_ticks_mean = int(waiting_seconds_mean * ticks_per_second)
+        self.waiting_ticks_stdev = self.waiting_ticks_mean / 4
         self.curr_waiting_ticks = 0
 
         # Random generator seeded with param seed
@@ -90,8 +91,6 @@ class WorkloadGenerator(Workload):
         self.num_pipelines = num_pipelines
         # average num ops per pipeline
         self.num_operators = num_operators
-        # how parallelizable each pipeline is (not currently in use)
-        self.parallel_factor = parallel_factor
         # avg num segments per operator
         self.num_segs = num_segs
         # value between 0 and 1 for (on avg) if segments are more CPU or IO heavy (low is IO)
@@ -226,10 +225,11 @@ class WorkloadGenerator(Workload):
 class WorkloadTrace(Workload):
     """Workload implementation that reads from a WorkloadReader and delivers pipelines based on tick timing"""
     
-    def __init__(self, reader: 'WorkloadReader', tick_length_secs: float):
-        """Initialize with a WorkloadReader and tick length"""
+    def __init__(self, reader: 'WorkloadReader', ticks_per_second: int):
+        """Initialize with a WorkloadReader and ticks per second"""
         self.reader = reader
-        self.tick_length_secs = tick_length_secs
+        self.ticks_per_second = ticks_per_second
+        self.tick_length_secs = 1.0 / ticks_per_second
         self.current_tick = 0
         self.next_batch: Optional[List[PipelineArrival]] = None
         self._arrival_iterator = reader.batch_by_arrival()

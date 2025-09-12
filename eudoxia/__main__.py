@@ -32,7 +32,7 @@ def run_command(args):
         with open(workload_path) as f:
             # TODO: don't assume CSV
             reader = CSVWorkloadReader(f)
-            workload = reader.get_workload(params['tick_length_secs'])
+            workload = reader.get_workload(params['ticks_per_second'])
             # workload is based on trace
             stats = run_simulator(params, workload=workload)
     else:
@@ -72,7 +72,7 @@ def gentrace_command(args):
     # Workload => Trace
     trace_generator = WorkloadTraceGenerator(
         workload=workload,
-        tick_length_secs=params['tick_length_secs'],
+        ticks_per_second=params['ticks_per_second'],
         duration_secs=params['duration']
     )
 

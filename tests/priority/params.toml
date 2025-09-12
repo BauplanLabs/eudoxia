@@ -1,3 +1,3 @@
-waiting_ticks_mean = 6_000_000
+waiting_seconds_mean = 6.0
 duration = 6000
 scheduler_algo = "my"

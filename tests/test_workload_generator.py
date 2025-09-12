@@ -12,10 +12,9 @@ def test_workload_generator_determinism():
     # Common parameters for both generators
     params = get_param_defaults()
     params.update({
-        'waiting_ticks_mean': 10,
+        'waiting_seconds_mean': 0.001,
         'num_pipelines': 3,
         'num_operators': 5,
-        'parallel_factor': 2,
         'num_segs': 2,
         'cpu_io_ratio': 0.5,
         'batch_prob': 0.4,

@@ -35,7 +35,7 @@ def test_run_simulator_basic(scheduler_algo):
     params['scheduler_algo'] = scheduler_algo
     if scheduler_algo == "priority-pool":
         params['num_pools'] = 2  # priority-pool scheduler requires 2 pools
-    params['duration'] = 400 * params['tick_length_secs']
+    params['duration'] = 400 / params['ticks_per_second']
 
     # simple workload with 3 jobs, arriving once every 100 ticks
     pipelines = []
@@ -61,8 +61,8 @@ def test_run_simulator_basic(scheduler_algo):
     #assert stats.pipelines_completed == 3, f"{scheduler_algo}: Expected 3 completed pipelines, got {stats.pipelines_completed}"
 
 
-@pytest.mark.parametrize("tick_length_secs", [10e-6, 100e-6, 1e-3, 10e-3])  # 10us, 100us, 1ms, 10ms
-def test_tick_length(tick_length_secs):
+@pytest.mark.parametrize("ticks_per_second", [100_000, 10_000, 1_000, 100])  # 10us, 100us, 1ms, 10ms
+def test_tick_length(ticks_per_second):
     """Test that tick length affects execution timing correctly"""
     from eudoxia.workload import Operator, Segment
 
@@ -73,7 +73,7 @@ def test_tick_length(tick_length_secs):
         'num_pools': 1,
         'cpu_pool': 1,  # Only 1 CPU so jobs run sequentially
         'duration': 4.9,  # 4.9 seconds - should allow only 4 jobs to complete
-        'tick_length_secs': tick_length_secs,
+        'ticks_per_second': ticks_per_second,
     })
 
     # Create 10 pipelines that arrive immediately

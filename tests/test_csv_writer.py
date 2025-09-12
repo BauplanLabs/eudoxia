@@ -22,11 +22,11 @@ class TestCSVWorkloadWriter(unittest.TestCase):
         # Keep StringIO alive for the duration of the workload trace
         csv_input = io.StringIO(original_csv)
         reader = CSVWorkloadReader(csv_input)
-        workload = reader.get_workload(tick_length_secs=1.0)
+        workload = reader.get_workload(ticks_per_second=1)
         
         # Generate new CSV from the workload trace
         # Need to run long enough to capture all arrivals (p3 arrives at 2.5s)
-        trace_generator = WorkloadTraceGenerator(workload, tick_length_secs=1.0, duration_secs=4.0)
+        trace_generator = WorkloadTraceGenerator(workload, ticks_per_second=1, duration_secs=4.0)
         
         output_csv = io.StringIO()
         writer = CSVWorkloadWriter(output_csv)

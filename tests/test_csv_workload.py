@@ -47,7 +47,7 @@ class TestWorkloadTrace(unittest.TestCase):
         
         with io.StringIO(csv_data) as f:
             reader = CSVWorkloadReader(f)
-            trace = WorkloadTrace(reader, tick_length_secs=1.0)
+            trace = WorkloadTrace(reader, ticks_per_second=1)
             
             # Tick 0: get p1
             pipelines = trace.run_one_tick()
@@ -75,7 +75,7 @@ class TestWorkloadTrace(unittest.TestCase):
         
         with io.StringIO(csv_data) as f:
             reader = CSVWorkloadReader(f)
-            trace = WorkloadTrace(reader, tick_length_secs=1.0)
+            trace = WorkloadTrace(reader, ticks_per_second=1)
             
             # Tick 0: nothing
             pipelines = trace.run_one_tick()
