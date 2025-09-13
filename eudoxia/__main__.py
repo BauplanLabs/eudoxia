@@ -112,9 +112,13 @@ def init_command(args):
     print(f"Created default parameters file: {args.output_file}")
 
 
-def main(argv):
+# entry point if the user just runs "eudoxia".  In that case, argv
+# will be None, but parser.parse_args will check sys.argv.
+#
+# other scripts can optionally call main directly, with desired args.
+def main(argv=None):
     parser = argparse.ArgumentParser(
-        prog='python3 -m eudoxia',
+        prog='eudoxia',
         description='Run Eudoxia simulation'
     )
     
@@ -153,5 +157,6 @@ def main(argv):
         sys.exit(1)
 
 
+# entry point if the user runs "python3 -m eudoxia"
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    main()
