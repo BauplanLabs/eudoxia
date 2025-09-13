@@ -10,6 +10,20 @@ from eudoxia.scheduler import Scheduler
 from eudoxia.workload import Workload, WorkloadGenerator, Pipeline
 from eudoxia.executor.assignment import Assignment
 
+__all__ = ["run_simulator", "parse_args_with_defaults", "get_param_defaults"]
+
+logger = logging.getLogger(__name__)
+
+class ElapsedTimeFormatter(logging.Formatter):
+    """Custom formatter that adds elapsed simulation time to log
+    messages.  Unlike normal logging formats based on wall-clock time,
+    we want to print elapsed simulator time."""
+
+    def format(self, record):
+        # Get elapsed time from root logger
+        root_logger = logging.getLogger()
+        elapsed_secs = getattr(root_logger, '_elapsed_secs', 0.0)
+        return f"[{elapsed_secs:6.1f}s] {record.levelname}:{record.name}: {record.getMessage()}"
 
 class SimulatorStats(NamedTuple):
     """Statistics returned from a simulator run"""
@@ -21,10 +35,6 @@ class SimulatorStats(NamedTuple):
     suspensions: int
     failures: int
     failure_error_counts: int
-
-logger = logging.getLogger(__name__)
-
-__all__ = ["run_simulator", "parse_args_with_defaults", "get_param_defaults"]
 
 def get_param_defaults() -> Dict:
     """
@@ -146,6 +156,13 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     logger.info(f"Running for {params['duration']}s or {max_ticks} ticks")
     logger.info(f"Running with random seed {params['random_seed']}")
 
+    # for all logger/handlers, we want the time printed to be elapsed simulation time
+    ticks_per_second = params["ticks_per_second"]
+    root_logger = logging.getLogger()
+    root_logger._elapsed_secs = 0.0
+    for handler in root_logger.handlers:
+        handler.setFormatter(ElapsedTimeFormatter())
+
     # a pipeline may have many operators.  These can get grouped
     # together into some number of containers, which are assigned to
     # run on machines (that is, resource pools).  These containers
@@ -160,6 +177,9 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
 
     # IMPORTANT!  This is the main simulation loop.
     for tick_number in range(max_ticks):
+        # Update elapsed time for logging
+        root_logger._elapsed_secs = tick_number / ticks_per_second
+        
         new_pipelines: List[Pipeline] = workload.run_one_tick()
         suspensions, assignments = scheduler.run_one_tick(executor_failures, new_pipelines)
         executor_failures = executor.run_one_tick(suspensions, assignments)
