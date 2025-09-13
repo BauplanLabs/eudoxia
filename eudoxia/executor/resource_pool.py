@@ -13,6 +13,8 @@ class ResourcePool:
     Manager of a pool of resources and active containers, the Executor takes
     assignments and ensures that all costs and resources are accounted for and
     additional are allocated if instructed.
+
+    A resource pool is analogous to a machine on which we can run containers.
     """
     def __init__(self, pool_id, cpu_pool, ram_pool, rng, ticks_per_second, **kwargs):
         self.pool_id = pool_id

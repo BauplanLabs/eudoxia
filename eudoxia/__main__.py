@@ -42,9 +42,12 @@ def run_command(args):
     print(f"Simulation completed:")
     print(f"  Pipelines created: {stats.pipelines_created}")
     print(f"  Pipelines completed: {stats.pipelines_completed}")
-    print(f"  OOM failures: {stats.oom_failures}")
     print(f"  Throughput: {stats.throughput:.2f} pipelines/sec")
     print(f"  P99 latency: {stats.p99_latency:.2f}s")
+    print(f"  Assignments: {stats.assignments}")
+    print(f"  Suspensions: {stats.suspensions}")
+    print(f"  Failures: {stats.failures}")
+    print(f"  Failure/error counts: {stats.failure_error_counts}")
 
 
 def gentrace_command(args):
