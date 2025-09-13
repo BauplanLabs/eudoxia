@@ -40,11 +40,11 @@ def test_run_simulator_basic(scheduler_algo):
     # simple workload with 3 jobs, arriving once every 100 ticks
     pipelines = []
     for i in range(3):
-        pipeline = Pipeline(Priority.BATCH_PIPELINE)
+        pipeline = Pipeline(f"test{i+1}", Priority.BATCH_PIPELINE)
         op = Operator()
         seg = Segment(baseline_cpu_seconds=5, cpu_scaling="linear3", storage_read_gb=10)
         op.add_segment(seg)
-        pipeline.values.add_node(op)
+        pipeline.add_operator(op)
         pipelines.append(pipeline)
 
     workload = MockWorkload({
@@ -79,12 +79,12 @@ def test_tick_length(ticks_per_second):
     # Create 10 pipelines that arrive immediately
     pipelines = []
     for i in range(10):
-        pipeline = Pipeline(Priority.BATCH_PIPELINE)
+        pipeline = Pipeline(f"cpu_test{i+1}", Priority.BATCH_PIPELINE)
         op = Operator()
         # CPU-only segment: 0 IO, 1 second CPU time
         seg = Segment(baseline_cpu_seconds=1.0, cpu_scaling="const", storage_read_gb=0)
         op.add_segment(seg)
-        pipeline.values.add_node(op)
+        pipeline.add_operator(op)
         pipelines.append(pipeline)
 
     # All pipelines arrive at tick 0

@@ -141,6 +141,28 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     executor = Executor(**params)
     scheduler = Scheduler(executor, scheduler_algo=params["scheduler_algo"])
 
+    # Set up custom logging with elapsed time
+    ticks_per_second = params["ticks_per_second"]
+    
+    # Create custom formatter that reads elapsed time from root logger
+    import logging
+    root_logger = logging.getLogger()
+    
+    class ElapsedTimeFormatter(logging.Formatter):
+        def format(self, record):
+            # Get elapsed time from root logger (shared across all loggers)
+            elapsed_secs = getattr(root_logger, '_elapsed_secs', 0.0)
+            # Format: [elapsed_time] LEVEL:logger_name: message
+            return f"[{elapsed_secs:6.1f}s] {record.levelname}:{record.name}: {record.getMessage()}"
+    
+    # Apply the custom formatter to all handlers
+    for handler in root_logger.handlers:
+        handler.setFormatter(ElapsedTimeFormatter())
+    
+    # Simple function to update elapsed time on root logger only
+    def set_elapsed_time(elapsed_secs):
+        root_logger._elapsed_secs = elapsed_secs
+
     tick_number = 0
     max_ticks = int(params["duration"] * params["ticks_per_second"])
     logger.info(f"Running for {params['duration']}s or {max_ticks} ticks")
@@ -160,6 +182,10 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
 
     # IMPORTANT!  This is the main simulation loop.
     for tick_number in range(max_ticks):
+        # Update elapsed time for all loggers
+        elapsed_secs = tick_number / ticks_per_second
+        set_elapsed_time(elapsed_secs)
+        
         new_pipelines: List[Pipeline] = workload.run_one_tick()
         suspensions, assignments = scheduler.run_one_tick(executor_failures, new_pipelines)
         executor_failures = executor.run_one_tick(suspensions, assignments)
