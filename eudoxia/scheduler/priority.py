@@ -125,7 +125,6 @@ def priority_scheduler(s, failures: List[Failure],
             # all pools depleted
             if pool_id == -1:
                 break
-            print(pool_stats)
 
             to_remove.append(job)
             if job.pipeline is not None:
