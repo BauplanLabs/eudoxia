@@ -18,9 +18,12 @@ class TestCommandLine(unittest.TestCase):
             mock_run.return_value = type('Stats', (), {
                 'pipelines_created': 5,
                 'pipelines_completed': 3,
-                'oom_failures': 0,
                 'throughput': 1.5,
-                'p99_latency': 0.1
+                'p99_latency': 0.1,
+                'assignments': 8,
+                'suspensions': 1,
+                'failures': 2,
+                'failure_error_counts': {'OOM': 2}
             })()
             
             # Should not raise an exception
@@ -55,9 +58,12 @@ class TestCommandLine(unittest.TestCase):
             mock_run.return_value = type('Stats', (), {
                 'pipelines_created': 1,
                 'pipelines_completed': 1,
-                'oom_failures': 0,
                 'throughput': 10.0,
-                'p99_latency': 0.05
+                'p99_latency': 0.05,
+                'assignments': 2,
+                'suspensions': 0,
+                'failures': 0,
+                'failure_error_counts': {}
             })()
 
             # Should not raise an exception
