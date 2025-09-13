@@ -95,6 +95,8 @@ class WorkloadGenerator(Workload):
         self.num_segs = num_segs
         # value between 0 and 1 for (on avg) if segments are more CPU or IO heavy (low is IO)
         self.cpu_io_ratio = cpu_io_ratio
+        # counter for pipeline IDs
+        self.pipeline_counter = 0
 
     
     def generate_query_segment(self) -> Segment:
@@ -151,13 +153,15 @@ class WorkloadGenerator(Workload):
         pipelines = []
         for _ in range(self.num_pipelines):
             priority = self.rng.choice(a=self.priority_values, p=self.priority_probs)
-            p = Pipeline(Priority(priority))
+            self.pipeline_counter += 1
+            pipeline_id = f"g{self.pipeline_counter}"
+            p = Pipeline(pipeline_id, Priority(priority))
             if priority == Priority.QUERY.value:
                 op = Operator()
                 seg = self.generate_query_segment()
                 op.add_segment(seg)
-                logger.info(f"Pipeline generated with Priority {Priority(priority)} and 1 op")
-                p.values.add_node(op)
+                logger.info(f"Pipeline {pipeline_id} generated with Priority {Priority(priority)} and 1 op")
+                p.add_operator(op)
             else:
                 ops = []
                 # TODO: ignoring parallel factor
@@ -184,16 +188,16 @@ class WorkloadGenerator(Workload):
                             op.add_segment(seg)
                         prev_seg = seg
                     ops.append(op)
-                logger.info(f"Pipeline generated with Priority {Priority(priority)} and {curr_num_ops} ops")
+                logger.info(f"Pipeline {pipeline_id} generated with Priority {Priority(priority)} and {curr_num_ops} ops")
 
                 # Pipeline is all operators in a linked list. First call has only
                 # one argument as it has no parent. all others have parent that is
                 # the previously generated operator in the list
                 for i in range(len(ops)):
                     if i == 0:
-                        p.values.add_node(ops[i])
+                        p.add_operator(ops[i])
                     else:
-                        p.values.add_node(ops[i], [ops[i-1]])
+                        p.add_operator(ops[i], [ops[i-1]])
             pipelines.append(p)
         return pipelines
 

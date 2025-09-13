@@ -7,8 +7,8 @@ class Suspend:
     """
     Object tracks suspended jobs
     """
-    def __init__(self, cid: uuid.UUID, pool_id: int):
-        self.cid = cid
+    def __init__(self, container_id: str, pool_id: int):
+        self.container_id = container_id
         self.pool_id = pool_id
 
 class Failure: 
@@ -16,17 +16,17 @@ class Failure:
     Tracks when jobs fail and tracks error message to provide back to scheduler
     """
     def __init__(self, ops: List[Operator], cpu, ram, priority: Priority,
-                 pool_id: int, cid = None, error: str = None): 
+                 pool_id: int, container_id = None, error: str = None): 
         self.ops = ops
         self.cpu = cpu
         self.ram = ram
         self.priority = priority
         self.pool_id = pool_id
-        self.cid = cid
+        self.container_id = container_id
         self.error = error
 
     def __repr__(self):
-        return f"Failed to run container {self.cid} with error: {self.error}"
+        return f"container failed {self.error}: container={self.container_id} cpus={self.cpu} ram_gb={self.ram}"
 
 class Assignment:
     """
@@ -44,15 +44,16 @@ class Assignment:
                           resources
     """
     def __init__(self, ops: List[Operator], cpu, ram, priority: Priority,
-                 pool_id: int, cid = None, is_resume=False, force_run = False): 
+                 pool_id: int, pipeline_id: str, container_id = None, is_resume=False, force_run = False): 
         self.ops = ops
         self.cpu = cpu
         self.ram = ram
         self.priority = priority
         self.pool_id = pool_id
-        self.cid = cid
+        self.pipeline_id = pipeline_id
+        self.container_id = container_id
         self.is_resume = is_resume
         self.force_run = force_run
 
     def __repr__(self):
-        return f"Assignment: allocate container with {self.cpu} CPUs, {self.ram}GB RAM"
+        return f"Assignment: allocate container with {self.cpu} CPUs, {self.ram}GB RAM for pipeline {self.pipeline_id}"

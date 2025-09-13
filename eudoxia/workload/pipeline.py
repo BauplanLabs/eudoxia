@@ -131,9 +131,10 @@ class Operator(Node):
     Operator is an encapsulation of many functions or a whole SQL query. Broader
     nodes in the big picture DAG. This is represented as a list of Segments
     """
-    def __init__(self):
+    def __init__(self, pipeline=None):
         super().__init__()
         self.values: List[Segment] = []
+        self.pipeline = pipeline  # Back reference to the pipeline this operator belongs to
     
     def add_segment(self, segment: Segment):
         """Add a segment to this operator"""
@@ -149,8 +150,14 @@ class Pipeline(Node):
     Pipeline is the top-level interface that arrives to the scheduler. This is a
     Tree of Operators.
     """
-    def __init__(self, priority: Priority):
+    def __init__(self, pipeline_id: str, priority: Priority):
         super().__init__()
         self.values: DAG[Operator] = DAG()
+        self.pipeline_id: str = pipeline_id
         self.priority: Priority = priority
+    
+    def add_operator(self, operator: 'Operator', parents=None):
+        """Add an operator to this pipeline and set the back reference"""
+        operator.pipeline = self
+        self.values.add_node(operator, parents)
 
