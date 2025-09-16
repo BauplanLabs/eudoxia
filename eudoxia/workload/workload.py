@@ -156,7 +156,6 @@ class WorkloadGenerator(Workload):
                 op = Operator()
                 seg = self.generate_query_segment()
                 op.add_segment(seg)
-                logger.info(f"Pipeline generated with Priority {Priority(priority)} and 1 op")
                 p.values.add_node(op)
             else:
                 ops = []
@@ -184,7 +183,6 @@ class WorkloadGenerator(Workload):
                             op.add_segment(seg)
                         prev_seg = seg
                     ops.append(op)
-                logger.info(f"Pipeline generated with Priority {Priority(priority)} and {curr_num_ops} ops")
 
                 # Pipeline is all operators in a linked list. First call has only
                 # one argument as it has no parent. all others have parent that is
