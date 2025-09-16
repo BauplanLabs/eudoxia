@@ -181,6 +181,8 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         root_logger._elapsed_secs = tick_number / ticks_per_second
         
         new_pipelines: List[Pipeline] = workload.run_one_tick()
+        for p in new_pipelines:
+            logger.info(f"Pipeline arrived with Priority {p.priority} and {len(p.values)} op(s)")
         suspensions, assignments = scheduler.run_one_tick(executor_failures, new_pipelines)
         executor_failures = executor.run_one_tick(suspensions, assignments)
 
