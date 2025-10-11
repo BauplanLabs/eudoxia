@@ -14,16 +14,19 @@ __all__ = ["run_simulator", "parse_args_with_defaults", "get_param_defaults"]
 
 logger = logging.getLogger(__name__)
 
-class ElapsedTimeFormatter(logging.Formatter):
+class SimulatedTimeFormatter(logging.Formatter):
     """Custom formatter that adds elapsed simulation time to log
     messages.  Unlike normal logging formats based on wall-clock time,
     we want to print elapsed simulator time."""
+    def __init__(self):
+        self.elapsed_seconds = 0.0
+
+    def set_simulated_elapsed_seconds(self, seconds):
+        self.elapsed_seconds = seconds
 
     def format(self, record):
-        # Get elapsed time from root logger
-        root_logger = logging.getLogger()
-        elapsed_secs = getattr(root_logger, '_elapsed_secs', 0.0)
-        return f"[{elapsed_secs:6.1f}s] {record.levelname}:{record.name}: {record.getMessage()}"
+        # Format: [elapsed_time] LEVEL:logger_name: message
+        return f"[{self.elapsed_seconds:6.1f}s] {record.levelname}:{record.name}: {record.getMessage()}"
 
 class SimulatorStats(NamedTuple):
     """Statistics returned from a simulator run"""
@@ -153,32 +156,16 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
 
     # Set up custom logging with elapsed time
     ticks_per_second = params["ticks_per_second"]
-    
-    # Create custom formatter that reads elapsed time from root logger
-    root_logger = logging.getLogger()
-    
-    class ElapsedTimeFormatter(logging.Formatter):
-        def format(self, record):
-            # Get elapsed time from root logger (shared across all loggers)
-            elapsed_secs = getattr(root_logger, '_elapsed_secs', 0.0)
-            # Format: [elapsed_time] LEVEL:logger_name: message
-            return f"[{elapsed_secs:6.1f}s] {record.levelname}:{record.name}: {record.getMessage()}"
-    
-    # Apply the custom formatter to all handlers
-    for handler in root_logger.handlers:
-        handler.setFormatter(ElapsedTimeFormatter())
+
+    # Configure log handlers to use simulated time (instead of real time)
+    sim_formatter = SimulatedTimeFormatter()
+    for handler in logging.getLogger().handlers:
+        handler.setFormatter(sim_formatter)
 
     tick_number = 0
     max_ticks = int(params["duration"] * params["ticks_per_second"])
     logger.info(f"Running for {params['duration']}s or {max_ticks} ticks")
     logger.info(f"Running with random seed {params['random_seed']}")
-
-    # for all logger/handlers, we want the time printed to be elapsed simulation time
-    ticks_per_second = params["ticks_per_second"]
-    root_logger = logging.getLogger()
-    root_logger._elapsed_secs = 0.0
-    for handler in root_logger.handlers:
-        handler.setFormatter(ElapsedTimeFormatter())
 
     # a pipeline may have many operators.  These can get grouped
     # together into some number of containers, which are assigned to
@@ -189,13 +176,12 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     num_suspenions = 0
     num_failures = 0
     failure_error_counts = defaultdict(int)
-
     executor_failures = []
 
     # IMPORTANT!  This is the main simulation loop.
     for tick_number in range(max_ticks):
-        root_logger._elapsed_secs = tick_number / ticks_per_second
-        
+        sim_formatter.set_simulated_elapsed_seconds(tick_number / ticks_per_second)
+
         new_pipelines: List[Pipeline] = workload.run_one_tick()
         for p in new_pipelines:
             logger.info(f"Pipeline arrived with Priority {p.priority} and {len(p.values)} op(s)")
@@ -210,7 +196,7 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         for failure in executor_failures:
             failure_error_counts[failure.error] += 1
 
-    # TODO: better way to calculate work thruput, going by num ops, etc. is
+    # TODO: better way to calculate work throuphput, going by num ops, etc. is
     # going to skew towards more smaller jobs
     throughput = executor.num_completed() / params['duration']
     p99 = np.percentile(executor.container_tick_times(), 99) / params["ticks_per_second"]
