@@ -56,8 +56,12 @@ def priority_scheduler(s, failures: List[Failure],
             s.batch_ppln_jobs.append(job)
 
     for f in failures:
-        job = WaitingQueueJob(priority=f.priority, p=None, ops=f.ops,
-                              cid=f.cid, pool_id=f.pool_id, old_ram=f.ram, old_cpu=f.cpu,
+        # Try to get pipeline from the first operator
+        pipeline = None
+        if f.ops and len(f.ops) > 0 and f.ops[0].pipeline:
+            pipeline = f.ops[0].pipeline
+        job = WaitingQueueJob(priority=f.priority, p=pipeline, ops=f.ops,
+                              container_id=f.container_id, pool_id=f.pool_id, old_ram=f.ram, old_cpu=f.cpu,
                               error=f.error)
         if f.priority == Priority.QUERY:
             s.qry_jobs.append(job)
@@ -68,25 +72,28 @@ def priority_scheduler(s, failures: List[Failure],
 
     for pool_id in range(s.executor.num_pools):
         for c in s.executor.pools[pool_id].suspending_containers:
-            job = WaitingQueueJob(priority=c.priority, p=None,
+            # Try to get pipeline from the first operator
+            pipeline = None
+            if c.operators and len(c.operators) > 0 and c.operators[0].pipeline:
+                pipeline = c.operators[0].pipeline
+            job = WaitingQueueJob(priority=c.priority, p=pipeline,
                                   ops=c.operators, pool_id=pool_id,
-                                  cid=c.cid, old_ram=c.ram, old_cpu=c.cpu,
+                                  container_id=c.container_id, old_ram=c.ram, old_cpu=c.cpu,
                                   error=c.error)
-            # c.cid is UUID type. must use it represented as an int to have
-            # it act as key in python dict
-            s.suspending[c.cid] = job
+            # Store job by container_id
+            s.suspending[c.container_id] = job
 
     for pool_id in range(s.executor.num_pools):
         for container in s.executor.pools[pool_id].suspended_containers:
-            if container.cid in s.suspending:
-                job = s.suspending[container.cid]
+            if container.container_id in s.suspending:
+                job = s.suspending[container.container_id]
                 if job.priority == Priority.QUERY:
                     s.qry_jobs.append(job)
                 elif job.priority == Priority.INTERACTIVE:
                     s.interactive_jobs.append(job)
                 elif job.priority == Priority.BATCH_PIPELINE:
                     s.batch_ppln_jobs.append(job)
-                del s.suspending[container.cid]
+                del s.suspending[container.container_id]
 
     pool_stats = {}
     for i in range(s.executor.num_pools):
@@ -145,7 +152,8 @@ def priority_scheduler(s, failures: List[Failure],
                     s.oom_failed_to_run += 1
                     continue
                 asgmnt = Assignment(ops=op_list, cpu=job_cpu, ram=job_ram,
-                                    pool_id=pool_id, priority=job.priority)
+                                    priority=job.priority, pool_id=pool_id, 
+                                    pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown_pipeline")
                 pool_stats[pool_id]["avail_cpu"] -= job_cpu
                 pool_stats[pool_id]["avail_ram"] -= job_ram
                 to_start.append(asgmnt)
@@ -157,7 +165,8 @@ def priority_scheduler(s, failures: List[Failure],
                 job_cpu = job.old_cpu
                 job_ram = job.old_ram
                 asgmnt = Assignment(ops=op_list, cpu=job_cpu, ram=job_ram,
-                                    pool_id=pool_id, priority=job.priority)
+                                    priority=job.priority, pool_id=pool_id, 
+                                    pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown_pipeline")
                 pool_stats[pool_id]["avail_cpu"] -= job_cpu
                 pool_stats[pool_id]["avail_ram"] -= job_ram
                 to_start.append(asgmnt)
@@ -169,7 +178,8 @@ def priority_scheduler(s, failures: List[Failure],
                     job_cpu = pool_stats[pool_id]["avail_cpu"]
                     job_ram = pool_stats[pool_id]["avail_ram"]
                 asgmnt = Assignment(ops=op_list, cpu=job_cpu, ram=job_ram,
-                                pool_id=pool_id, priority=job.priority)
+                                    priority=job.priority, pool_id=pool_id, 
+                                    pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown_pipeline")
                 pool_stats[pool_id]["avail_cpu"] -= job_cpu
                 pool_stats[pool_id]["avail_ram"] -= job_ram
                 to_start.append(asgmnt)
@@ -206,10 +216,7 @@ def priority_scheduler(s, failures: List[Failure],
             pool_id = ((pool_id + 1) % s.executor.num_pools)
 
         for sus in to_suspend:
-            susobj = Suspend(sus.cid, sus.pool_id)
+            susobj = Suspend(sus.container_id, sus.pool_id)
             suspensions.append(susobj)
-    # Print diagnostic information about what assignments are created. This
-    # string is formatted via the Assignment __repr__ function
-    for a in new_assignments:
-        logger.info(a)
+
     return suspensions, new_assignments

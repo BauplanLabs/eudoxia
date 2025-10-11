@@ -7,7 +7,7 @@ from .decorators import register_scheduler_init, register_scheduler
 
 @register_scheduler_init(key="naive")
 def naive_pipeline_init(s): 
-    s.waiting_queue: Tuple[List[Operator], Priority] = []
+    s.waiting_queue: List[Pipeline] = []
 
 @register_scheduler(key="naive")
 def naive_pipeline(s, failures: List[Failure], 
@@ -25,8 +25,7 @@ def naive_pipeline(s, failures: List[Failure],
             - List of new assignments to provide to Executor
     """
     for p in pipelines:
-        ops = [op for op in p.values]
-        s.waiting_queue.append((ops, p.priority))
+        s.waiting_queue.append(p)
     if len(s.waiting_queue) == 0:
         return [], []
 
@@ -36,8 +35,10 @@ def naive_pipeline(s, failures: List[Failure],
         avail_cpu_pool = s.executor.pools[pool_id].avail_cpu_pool
         avail_ram_pool = s.executor.pools[pool_id].avail_ram_pool
         if avail_cpu_pool > 0 and avail_ram_pool > 0 and s.waiting_queue:
-            op_list, priority = s.waiting_queue.pop(0)
+            pipeline = s.waiting_queue.pop(0)
+            op_list = list(pipeline.values)
             assignment = Assignment(ops=op_list, cpu=avail_cpu_pool, ram=avail_ram_pool,
-                                    priority=priority, pool_id=pool_id)
+                                    priority=pipeline.priority, pool_id=pool_id, 
+                                    pipeline_id=pipeline.pipeline_id)
             assignments.append(assignment)
     return suspensions, assignments

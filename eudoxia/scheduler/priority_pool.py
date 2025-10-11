@@ -142,7 +142,7 @@ def priority_pool_scheduler(s, failures: List[Failure],
                         job_cpu = pool_stats[pool_id]["avail_cpu"]
                         job_ram = pool_stats[pool_id]["avail_ram"]
                     asgmnt = Assignment(ops=op_list, cpu=job_cpu, ram=job_ram,
-                                        pool_id=pool_id, priority=job.priority)
+                                        pool_id=pool_id, priority=job.priority, pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown")
                     pool_stats[pool_id]["avail_cpu"] -= job_cpu
                     pool_stats[pool_id]["avail_ram"] -= job_ram
                     to_start.append(asgmnt)
@@ -159,7 +159,7 @@ def priority_pool_scheduler(s, failures: List[Failure],
                         job_cpu = pool_stats[pool_id]["avail_cpu"]
                         job_ram = pool_stats[pool_id]["avail_ram"]
                     asgmnt = Assignment(ops=op_list, cpu=job_cpu, ram=job_ram,
-                                        pool_id=pool_id, priority=job.priority)
+                                        pool_id=pool_id, priority=job.priority, pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown")
                     pool_stats[pool_id]["avail_cpu"] -= job_cpu
                     pool_stats[pool_id]["avail_ram"] -= job_ram
                     to_start.append(asgmnt)
@@ -172,7 +172,7 @@ def priority_pool_scheduler(s, failures: List[Failure],
                         job_cpu = pool_stats[pool_id]["avail_cpu"]
                         job_ram = pool_stats[pool_id]["avail_ram"]
                     asgmnt = Assignment(ops=op_list, cpu=job_cpu, ram=job_ram,
-                                    pool_id=pool_id, priority=job.priority)
+                                    pool_id=pool_id, priority=job.priority, pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown")
                     pool_stats[pool_id]["avail_cpu"] -= job_cpu
                     pool_stats[pool_id]["avail_ram"] -= job_ram
                     to_start.append(asgmnt)

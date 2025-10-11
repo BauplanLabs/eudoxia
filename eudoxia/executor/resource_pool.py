@@ -53,9 +53,9 @@ class ResourcePool:
         assert cpu_to_be_alloc <= self.avail_cpu_pool, "Overallocated CPU in assignment"
         assert ram_to_be_alloc <= self.avail_ram_pool, "Overallocated RAM in assignment"
 
-    def get_container_by_id(self, cid: uuid.UUID) -> Container: 
+    def get_container_by_id(self, container_id: str) -> Container: 
         for container in self.active_containers:
-            if container.cid == cid:
+            if container.container_id == container_id:
                 return container
         return None
 
@@ -64,14 +64,14 @@ class ResourcePool:
         ensure suspension is valid
         """
         for s in suspensions:
-            container = self.get_container_by_id(s.cid)
+            container = self.get_container_by_id(s.container_id)
             assert container.can_suspend_container(), "Container cannot be suspended right now"
 
     def status_report(self):
         logger.info(f"----------STATUS REPORT POOL {self.pool_id}----------")
         for c in self.active_containers:
             secs_left = c._num_ticks_left * self.tick_length_secs 
-            logger.info(f"{c.cid} running with {c._num_ticks_left} ticks left or {secs_left} seconds left")
+            logger.info(f"{c.container_id} running with {c._num_ticks_left} ticks left or {secs_left} seconds left")
         logger.info(f"----------END STATUS REPORT FOR POOL {self.pool_id}----------")
 
     def log_pool_utilization(self): 
@@ -91,7 +91,7 @@ class ResourcePool:
         if len(suspensions) > 0:
             self.verify_valid_suspend(suspensions)
             for s in suspensions:
-                container = self.get_container_by_id(s.cid)
+                container = self.get_container_by_id(s.container_id)
                 container.suspend_container()
                 self.suspending_containers.append(container)
                 self.active_containers.remove(container)
@@ -106,6 +106,7 @@ class ResourcePool:
                 self.avail_ram_pool -= a.ram
                 self.active_containers.append(container)
                 self.container_tick_times.append(container.num_ticks)
+                logger.info(f"start container {container}")
 
         to_remove = []
         for c in self.suspending_containers:
@@ -131,11 +132,11 @@ class ResourcePool:
                 # record a job failure and log it to the console
                 if c.error is not None:
                     f = Failure(ops=c.operators, cpu=c.cpu, ram=c.ram,
-                                priority=c.priority, pool_id=c.pool_id, cid=c.cid, error=c.error)
+                                priority=c.priority, pool_id=c.pool_id, container_id=c.container_id, error=c.error)
                     logger.info(f)
                     failures.append(f)
                 else:
-                    logger.info(f"Completed container {c.cid}; Freeing {c.cpu} CPUs and {c.ram}GB RAM")
+                    logger.info(f"container completed: {c}")
                     self.num_completed += 1
         for c in to_remove:
             self.active_containers.remove(c)

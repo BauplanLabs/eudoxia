@@ -142,7 +142,7 @@ class CSVWorkloadReader(WorkloadReader):
                     raise ValueError(f"Only first row of pipeline {pipeline_id} should have arrival_seconds set, found '{row.arrival_seconds}' in row {i+1}")
         
         # Create the pipeline
-        pipeline = Pipeline(priority)
+        pipeline = Pipeline(pipeline_id, priority)
         
         # Create operators and segments (1:1 relationship)
         operators = {}  # operator_id -> Operator
@@ -167,12 +167,12 @@ class CSVWorkloadReader(WorkloadReader):
             
             if not row.parents:
                 # root
-                pipeline.values.add_node(operator)
+                pipeline.add_operator(operator)
             else:
                 # other
                 parent_ids = [pid.strip() for pid in row.parents.split(';') if pid.strip()]
                 parent_operators = [operators[pid] for pid in parent_ids]
-                pipeline.values.add_node(operator, parent_operators)
+                pipeline.add_operator(operator, parent_operators)
 
         return pipeline
 

@@ -14,8 +14,11 @@ class Container:
     created and then calculates how many ticks it will need to run with
     resources provided.
     """
+    next_container_num = 1
+
     def __init__(self, ram, cpu, ops, prty: Priority, pool_id: int, rng: np.random.Generator, ticks_per_second: int):
-        self.cid = uuid.UUID(bytes=rng.bytes(16))
+        self.container_id = f"c{Container.next_container_num}"
+        Container.next_container_num += 1
         self.pool_id = pool_id
         self.ram = ram
         self.cpu = cpu
@@ -31,16 +34,32 @@ class Container:
         self.num_ticks = self._compute_ticks() 
         self._num_ticks_left = self.num_ticks
         self.num_secs = self.num_ticks * self.tick_length_secs
-        logger.info(self.__repr__())
-    
+        
+    def get_pipeline_id(self):
+        """Get the pipeline ID from operators, handling mixed pipelines"""
+        pipeline_ids = set()
+        for op in self.operators:
+            if op.pipeline and op.pipeline.pipeline_id:
+                pipeline_ids.add(op.pipeline.pipeline_id)
+
+        if len(pipeline_ids) == 0:
+            return "no_pipeline"
+        elif len(pipeline_ids) == 1:
+            return list(pipeline_ids)[0]
+        else:
+            return "multiple_pipelines"
+
     def __repr__(self):
-        return (f"Container {self.cid} with {self.cpu} CPUs, {self.ram}GB RAM, " + \
-                f"will run for {self.num_ticks} ticks or {self.num_secs:.2f} seconds")
+        num_ops = len(self.operators)
+        return f"container={self.container_id} pipeline={self.get_pipeline_id()} ops={num_ops} cpus={self.cpu} ram_gb={self.ram} runtime_secs={self.num_secs:.1f}"
 
     def _compute_ticks(self) -> int:
         """
         This function utilizes functions provided by Segment to calculate the
-        amount of CPU and RAM ticks that are needed across all segments
+        amount of CPU and RAM ticks that are needed across all segments.  It also
+        computes the boundaries between segments.  The reason is that we can only
+        suspend containers between segments (not in the middle of while a segment
+        is running).
         Returns:
             int: number of ticks this container will need to run for
         """
@@ -55,13 +74,14 @@ class Container:
                     self.error = "OOM"
                     seg_ticks_before_OOM = int(oom_seconds / self.tick_length_secs)
                     total_ticks += seg_ticks_before_OOM
+                    return total_ticks # after OOM, we cannot run other segments
                 else:
                     # there is no OOM.  We will spend all the time
                     # expected on I/O (first), then CPU (second)
                     io_time_secs = seg.get_io_seconds()
                     cpu_time_secs = seg.get_cpu_time(self.cpu)
                     total_ticks += int((io_time_secs + cpu_time_secs) / self.tick_length_secs)
-                self.segment_tick_boundaries.append(total_ticks)
+                    self.segment_tick_boundaries.append(total_ticks)
         return total_ticks
 
     def tick(self):
