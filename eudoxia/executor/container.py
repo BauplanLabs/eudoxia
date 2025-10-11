@@ -74,6 +74,7 @@ class Container:
                     self.error = "OOM"
                     seg_ticks_before_OOM = int(oom_seconds / self.tick_length_secs)
                     total_ticks += seg_ticks_before_OOM
+                    return total_ticks # after OOM, we cannot run other segments
                 else:
                     # there is no OOM.  We will spend all the time
                     # expected on I/O (first), then CPU (second)
