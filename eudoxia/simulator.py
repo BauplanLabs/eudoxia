@@ -145,7 +145,6 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     ticks_per_second = params["ticks_per_second"]
     
     # Create custom formatter that reads elapsed time from root logger
-    import logging
     root_logger = logging.getLogger()
     
     class ElapsedTimeFormatter(logging.Formatter):

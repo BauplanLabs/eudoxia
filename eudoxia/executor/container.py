@@ -56,7 +56,10 @@ class Container:
     def _compute_ticks(self) -> int:
         """
         This function utilizes functions provided by Segment to calculate the
-        amount of CPU and RAM ticks that are needed across all segments
+        amount of CPU and RAM ticks that are needed across all segments.  It also
+        computes the boundaries between segments.  The reason is that we can only
+        suspend containers between segments (not in the middle of while a segment
+        is running).
         Returns:
             int: number of ticks this container will need to run for
         """

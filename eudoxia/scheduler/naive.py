@@ -36,7 +36,7 @@ def naive_pipeline(s, failures: List[Failure],
         avail_ram_pool = s.executor.pools[pool_id].avail_ram_pool
         if avail_cpu_pool > 0 and avail_ram_pool > 0 and s.waiting_queue:
             pipeline = s.waiting_queue.pop(0)
-            op_list = [op for op in pipeline.values]
+            op_list = list(pipeline.values)
             assignment = Assignment(ops=op_list, cpu=avail_cpu_pool, ram=avail_ram_pool,
                                     priority=pipeline.priority, pool_id=pool_id, 
                                     pipeline_id=pipeline.pipeline_id)

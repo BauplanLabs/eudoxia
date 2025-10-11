@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 import numpy as np
 from eudoxia.utils import EudoxiaException, DISK_SCAN_GB_SEC, Priority
 from eudoxia.utils.dag import Node, DAG
@@ -131,11 +131,11 @@ class Operator(Node):
     Operator is an encapsulation of many functions or a whole SQL query. Broader
     nodes in the big picture DAG. This is represented as a list of Segments
     """
-    def __init__(self, pipeline=None):
+    def __init__(self):
         super().__init__()
         self.values: List[Segment] = []
-        self.pipeline = pipeline  # Back reference to the pipeline this operator belongs to
-    
+        self.pipeline: Optional[Pipeline] = None  # Back reference to the pipeline to which this operator belongs
+
     def add_segment(self, segment: Segment):
         """Add a segment to this operator"""
         self.values.append(segment)
@@ -152,12 +152,13 @@ class Pipeline(Node):
     """
     def __init__(self, pipeline_id: str, priority: Priority):
         super().__init__()
-        self.values: DAG[Operator] = DAG()
         self.pipeline_id: str = pipeline_id
         self.priority: Priority = priority
-    
+        self.values: DAG[Operator] = DAG()
+
     def add_operator(self, operator: 'Operator', parents=None):
         """Add an operator to this pipeline and set the back reference"""
+        assert operator.pipeline == None # cannot already belong to another pipeline
         operator.pipeline = self
         self.values.add_node(operator, parents)
 
