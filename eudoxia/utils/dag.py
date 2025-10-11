@@ -26,6 +26,9 @@ class DAG[T: Node]:
         self.roots = [] # list of root nodes (nodes with no parents)
         self.iter = None
 
+    def __len__(self):
+        return len(self.node_ids)
+
     def __iter__(self):
         self.iter = DAGIterator(self)
         return self.iter

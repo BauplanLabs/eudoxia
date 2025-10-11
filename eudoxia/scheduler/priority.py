@@ -218,4 +218,5 @@ def priority_scheduler(s, failures: List[Failure],
         for sus in to_suspend:
             susobj = Suspend(sus.container_id, sus.pool_id)
             suspensions.append(susobj)
+
     return suspensions, new_assignments
