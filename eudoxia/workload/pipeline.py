@@ -66,7 +66,7 @@ class Segment:
                         "squared": ScalingFuncs._squared,
                         "exp":     ScalingFuncs._exponential_bnd,
                     }
-    def __init__(self, baseline_cpu_seconds=None, cpu_scaling=None, memory_gb=None, storage_read_gb=None):
+    def __init__(self, baseline_cpu_seconds=None, cpu_scaling="const", memory_gb=None, storage_read_gb=0):
         self.baseline_cpu_seconds = baseline_cpu_seconds # time for one processor
         self.memory_gb = memory_gb # GB of memory used (None means linear growth based on storage_read_gb)
         self.storage_read_gb = storage_read_gb # GB read from storage
@@ -86,8 +86,10 @@ class Segment:
     
     def get_peak_memory_gb(self):
         """Get peak memory usage. Defaults to storage_read_gb if memory_gb not specified."""
-        return self.memory_gb if self.memory_gb is not None else self.storage_read_gb
-    
+        if self.memory_gb is not None:
+            return self.memory_gb
+        return self.storage_read_gb
+
     def get_seconds_until_oom(self, limit_gb):
         """
         Calculate when this segment will OOM given a memory limit.

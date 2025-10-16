@@ -1,6 +1,4 @@
 import logging
-import uuid
-import numpy as np
 from typing import List
 from eudoxia.utils import DISK_SCAN_GB_SEC, Priority
 from eudoxia.workload import Operator
@@ -16,7 +14,7 @@ class Container:
     """
     next_container_num = 1
 
-    def __init__(self, ram, cpu, ops, prty: Priority, pool_id: int, rng: np.random.Generator, ticks_per_second: int):
+    def __init__(self, ram, cpu, ops, prty: Priority, pool_id: int, ticks_per_second: int):
         self.container_id = f"c{Container.next_container_num}"
         Container.next_container_num += 1
         self.pool_id = pool_id
@@ -91,11 +89,9 @@ class Container:
         return (self._num_ticks_left == 0)
 
     def can_suspend_container(self) -> bool:
-        """
-        Can only suspend a container if we're in the middle of executing a
-        Segment. Must wait for Segment to complete before the container is
-        pausable
-        """
+        """Can only suspend a container if between execution of
+        segments. Must wait for Segment to complete before the
+        container is pausable"""
         elapsed = self.num_ticks - self._num_ticks_left
         if elapsed in self.segment_tick_boundaries:
             return True
