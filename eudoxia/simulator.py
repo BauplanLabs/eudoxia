@@ -79,7 +79,7 @@ def get_param_defaults() -> Dict:
         "cpu_pool": 64,
         # GB in RAM pool
         "ram_pool": 500,
-        # random seed and rng generator
+        # random seed for workload generation
         "random_seed": 10,
     }
 
@@ -146,11 +146,7 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     # INITIALIZATION
     if workload is None:
         workload = WorkloadGenerator(**params)
-    
-    # Create rng for components that still need it (like Executor)
-    if "rng" not in params:
-        params["rng"] = np.random.default_rng(params["random_seed"])
-    
+
     executor = Executor(**params)
     scheduler = Scheduler(executor, scheduler_algo=params["scheduler_algo"])
 

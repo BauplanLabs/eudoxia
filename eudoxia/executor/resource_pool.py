@@ -1,6 +1,4 @@
 import logging
-import uuid
-import numpy as np
 from typing import List
 from .assignment import Assignment, Suspend, Failure
 from .container import Container
@@ -16,13 +14,12 @@ class ResourcePool:
 
     A resource pool is analogous to a machine on which we can run containers.
     """
-    def __init__(self, pool_id, cpu_pool, ram_pool, rng, ticks_per_second, **kwargs):
+    def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second, **kwargs):
         self.pool_id = pool_id
         self.max_cpu_pool = cpu_pool
         self.max_ram_pool = ram_pool
         self.avail_cpu_pool = cpu_pool
         self.avail_ram_pool = ram_pool
-        self.rng = rng
         self.ticks_per_second = ticks_per_second
         self.tick_length_secs = 1.0 / ticks_per_second
 
@@ -100,7 +97,7 @@ class ResourcePool:
             self.verify_valid_assignment(assignments)
             for a in assignments:
                 container = Container(ram=a.ram, cpu=a.cpu, ops=a.ops,
-                                      prty=a.priority, pool_id=self.pool_id, rng=self.rng,
+                                      prty=a.priority, pool_id=self.pool_id,
                                       ticks_per_second=self.ticks_per_second)
                 self.avail_cpu_pool -= a.cpu
                 self.avail_ram_pool -= a.ram
