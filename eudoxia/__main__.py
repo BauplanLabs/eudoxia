@@ -12,25 +12,25 @@ from eudoxia.workload import WorkloadGenerator
 import tomlkit
 
 
-def run_command(args):
-    """Handle the run subcommand"""
-    
+def run_command(params_file, workload=None):
+    """Run simulation with parameters file and optional workload file"""
+
     # Check if params file exists
-    if not Path(args.params_file).exists():
-        print(f"Error: Parameters file '{args.params_file}' not found", file=sys.stderr)
+    if not Path(params_file).exists():
+        print(f"Error: Parameters file '{params_file}' not found", file=sys.stderr)
         sys.exit(1)
 
-    with open(args.params_file, 'rb') as f:
+    with open(params_file, 'rb') as f:
         params = tomllib.load(f)
     params = parse_args_with_defaults(params)
 
-    if args.workload:
+    if workload:
         # base workload on trace file
-        workload_path = Path(args.workload)
+        workload_path = Path(workload)
         if not workload_path.exists():
-            print(f"Error: Workload file '{args.workload}' not found", file=sys.stderr)
+            print(f"Error: Workload file '{workload}' not found", file=sys.stderr)
             sys.exit(1)
-        
+
         with open(workload_path) as f:
             # TODO: don't assume CSV
             reader = CSVWorkloadReader(f)
@@ -52,28 +52,28 @@ def run_command(args):
     print(f"  Failure/error counts: {stats.failure_error_counts}")
 
 
-def gentrace_command(args):
-    """Handle the gentrace subcommand"""
-    
+def gentrace_command(params_file, output_file, force=False):
+    """Generate CSV workload trace from parameters file"""
+
     # Check if params file exists
-    if not Path(args.params_file).exists():
-        print(f"Error: Parameters file '{args.params_file}' not found", file=sys.stderr)
+    if not Path(params_file).exists():
+        print(f"Error: Parameters file '{params_file}' not found", file=sys.stderr)
         sys.exit(1)
-    
+
     # Check if output file already exists
-    output_path = Path(args.output_file)
-    if output_path.exists() and not args.force:
-        print(f"Error: File '{args.output_file}' already exists. Use -f/--force to overwrite.", file=sys.stderr)
+    output_path = Path(output_file)
+    if output_path.exists() and not force:
+        print(f"Error: File '{output_file}' already exists. Use -f/--force to overwrite.", file=sys.stderr)
         sys.exit(1)
-    
+
     # Load and parse parameters
-    with open(args.params_file, 'rb') as f:
+    with open(params_file, 'rb') as f:
         params = tomllib.load(f)
     params = parse_args_with_defaults(params)
 
     # Randomly generated workload
     workload = WorkloadGenerator(**params)
-    
+
     # Workload => Trace
     trace_generator = WorkloadTraceGenerator(
         workload=workload,
@@ -82,22 +82,22 @@ def gentrace_command(args):
     )
 
     # Write Trace to CSV
-    with open(args.output_file, 'w') as f:
+    with open(output_file, 'w') as f:
         writer = CSVWorkloadWriter(f)
 
         for row in trace_generator.generate_rows():
             writer.write_row(row)
 
-    print(f"Generated workload trace saved to {args.output_file}")
+    print(f"Generated workload trace saved to {output_file}")
 
 
-def init_command(args):
-    """Handle the init subcommand"""
-    output_path = Path(args.output_file)
+def init_command(output_file, force=False):
+    """Create TOML file with default parameters"""
+    output_path = Path(output_file)
 
     # Check if file already exists
-    if output_path.exists() and not args.force:
-        print(f"Error: File '{args.output_file}' already exists. Use --force to overwrite.", file=sys.stderr)
+    if output_path.exists() and not force:
+        print(f"Error: File '{output_file}' already exists. Use --force to overwrite.", file=sys.stderr)
         sys.exit(1)
 
     # Get default parameters
@@ -111,22 +111,22 @@ def init_command(args):
     with open(output_path, 'w') as f:
         tomlkit.dump(t, f)
 
-    print(f"Created default parameters file: {args.output_file}")
+    print(f"Created default parameters file: {output_file}")
 
 
-def snap_command(args):
-    """Handle the snap subcommand - round down timestamps to tick boundaries"""
+def snap_command(input_workload, output_file, ticks_per_second, force=False):
+    """Snap timestamps to tick boundaries (round down)"""
 
     # Check if input file exists
-    input_path = Path(args.input_workload)
+    input_path = Path(input_workload)
     if not input_path.exists():
-        print(f"Error: Input workload file '{args.input_workload}' not found", file=sys.stderr)
+        print(f"Error: Input workload file '{input_workload}' not found", file=sys.stderr)
         sys.exit(1)
 
     # Check if output file already exists
-    output_path = Path(args.output_file)
-    if output_path.exists() and not args.force:
-        print(f"Error: File '{args.output_file}' already exists. Use -f/--force to overwrite.", file=sys.stderr)
+    output_path = Path(output_file)
+    if output_path.exists() and not force:
+        print(f"Error: File '{output_file}' already exists. Use -f/--force to overwrite.", file=sys.stderr)
         sys.exit(1)
 
     # Ensure input and output are different files
@@ -135,8 +135,8 @@ def snap_command(args):
         sys.exit(1)
 
     # Validate ticks_per_second
-    if args.ticks_per_second <= 0:
-        print(f"Error: ticks_per_second must be positive, got {args.ticks_per_second}", file=sys.stderr)
+    if ticks_per_second <= 0:
+        print(f"Error: ticks_per_second must be positive, got {ticks_per_second}", file=sys.stderr)
         sys.exit(1)
 
     # Process the CSV
@@ -149,27 +149,27 @@ def snap_command(args):
             # Modify arrival_seconds if it's set (not empty)
             if row['arrival_seconds'].strip():
                 original = float(row['arrival_seconds'])
-                snapped = math.floor(original * args.ticks_per_second) / args.ticks_per_second
+                snapped = math.floor(original * ticks_per_second) / ticks_per_second
                 row['arrival_seconds'] = snapped
 
             writer.writerow(row)
 
-    print(f"Snapped workload timestamps saved to {args.output_file}")
+    print(f"Snapped workload timestamps saved to {output_file}")
 
 
-def jitter_command(args):
-    """Handle the jitter subcommand - add uniform random jitter to timestamps"""
+def jitter_command(input_workload, output_file, delta, seed=None, force=False):
+    """Add random jitter to timestamps"""
 
     # Check if input file exists
-    input_path = Path(args.input_workload)
+    input_path = Path(input_workload)
     if not input_path.exists():
-        print(f"Error: Input workload file '{args.input_workload}' not found", file=sys.stderr)
+        print(f"Error: Input workload file '{input_workload}' not found", file=sys.stderr)
         sys.exit(1)
 
     # Check if output file already exists
-    output_path = Path(args.output_file)
-    if output_path.exists() and not args.force:
-        print(f"Error: File '{args.output_file}' already exists. Use -f/--force to overwrite.", file=sys.stderr)
+    output_path = Path(output_file)
+    if output_path.exists() and not force:
+        print(f"Error: File '{output_file}' already exists. Use -f/--force to overwrite.", file=sys.stderr)
         sys.exit(1)
 
     # Ensure input and output are different files
@@ -178,12 +178,12 @@ def jitter_command(args):
         sys.exit(1)
 
     # Validate delta
-    if args.delta < 0:
-        print(f"Error: delta must be non-negative, got {args.delta}", file=sys.stderr)
+    if delta < 0:
+        print(f"Error: delta must be non-negative, got {delta}", file=sys.stderr)
         sys.exit(1)
 
     # Set random seed (use 42 as default if not provided)
-    seed = args.seed if args.seed is not None else 42
+    seed = seed if seed is not None else 42
     rng = np.random.default_rng(seed)
 
     # Read all rows and group into pipelines
@@ -214,7 +214,7 @@ def jitter_command(args):
 
                 # Add jitter in range [0, delta]
                 original = float(row['arrival_seconds'])
-                jitter = rng.uniform(0, args.delta)
+                jitter = rng.uniform(0, delta)
                 jittered = original + jitter
                 row['arrival_seconds'] = jittered
                 current_arrival = jittered
@@ -243,7 +243,7 @@ def jitter_command(args):
             for row in rows:
                 writer.writerow(row)
 
-    print(f"Jittered workload timestamps saved to {args.output_file}")
+    print(f"Jittered workload timestamps saved to {output_file}")
 
 
 # entry point if the user just runs "eudoxia".  In that case, argv
@@ -294,17 +294,17 @@ def main(argv=None):
     if args.command is None:
         parser.print_help()
         sys.exit(1)
-    
+
     if args.command == 'run':
-        run_command(args)
+        run_command(args.params_file, workload=args.workload)
     elif args.command == 'gentrace':
-        gentrace_command(args)
+        gentrace_command(args.params_file, args.output_file, force=args.force)
     elif args.command == 'init':
-        init_command(args)
+        init_command(args.output_file, force=args.force)
     elif args.command == 'snap':
-        snap_command(args)
+        snap_command(args.input_workload, args.output_file, args.ticks_per_second, force=args.force)
     elif args.command == 'jitter':
-        jitter_command(args)
+        jitter_command(args.input_workload, args.output_file, args.delta, seed=args.seed, force=args.force)
     else:
         print(f"Error: Unknown command '{args.command}'. Available commands: run, gentrace, init, snap, jitter", file=sys.stderr)
         sys.exit(1)
