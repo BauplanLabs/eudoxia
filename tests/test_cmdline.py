@@ -93,7 +93,7 @@ class TestCommandLine(unittest.TestCase):
             output_file = f.name
 
         # Run snap command with ticks_per_second=20
-        main(['snap', input_file, output_file, '20', '-f'])
+        main(['tools', 'snap', input_file, output_file, '20', '-f'])
 
         # Read and verify output
         with open(output_file) as f:
@@ -126,7 +126,7 @@ class TestCommandLine(unittest.TestCase):
             output_file = f.name
 
         # Run jitter command
-        main(['jitter', input_file, output_file, '0.1', '-s', '42', '-f'])
+        main(['tools', 'jitter', input_file, output_file, '0.1', '-s', '42', '-f'])
 
         # Read output
         with open(output_file) as f:
