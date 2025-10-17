@@ -2,6 +2,8 @@ import argparse
 import sys
 import tomllib
 import numpy as np
+import math
+import csv
 from io import StringIO
 from pathlib import Path
 from eudoxia.simulator import run_simulator, parse_args_with_defaults, get_param_defaults
@@ -92,24 +94,156 @@ def gentrace_command(args):
 def init_command(args):
     """Handle the init subcommand"""
     output_path = Path(args.output_file)
-    
+
     # Check if file already exists
     if output_path.exists() and not args.force:
         print(f"Error: File '{args.output_file}' already exists. Use --force to overwrite.", file=sys.stderr)
         sys.exit(1)
-    
+
     # Get default parameters
     defaults = get_param_defaults()
-    
+
     # Create TOML table and update with defaults
     t = tomlkit.table()
     t.update(defaults)
-    
+
     # Write to file
     with open(output_path, 'w') as f:
         tomlkit.dump(t, f)
-    
+
     print(f"Created default parameters file: {args.output_file}")
+
+
+def snap_command(args):
+    """Handle the snap subcommand - round down timestamps to tick boundaries"""
+
+    # Check if input file exists
+    input_path = Path(args.input_workload)
+    if not input_path.exists():
+        print(f"Error: Input workload file '{args.input_workload}' not found", file=sys.stderr)
+        sys.exit(1)
+
+    # Check if output file already exists
+    output_path = Path(args.output_file)
+    if output_path.exists() and not args.force:
+        print(f"Error: File '{args.output_file}' already exists. Use -f/--force to overwrite.", file=sys.stderr)
+        sys.exit(1)
+
+    # Ensure input and output are different files
+    if input_path.resolve() == output_path.resolve():
+        print(f"Error: Input and output files must be different", file=sys.stderr)
+        sys.exit(1)
+
+    # Validate ticks_per_second
+    if args.ticks_per_second <= 0:
+        print(f"Error: ticks_per_second must be positive, got {args.ticks_per_second}", file=sys.stderr)
+        sys.exit(1)
+
+    # Process the CSV
+    with open(input_path) as infile, open(output_path, 'w', newline='') as outfile:
+        reader = csv.DictReader(infile)
+        writer = csv.DictWriter(outfile, fieldnames=reader.fieldnames)
+        writer.writeheader()
+
+        for row in reader:
+            # Modify arrival_seconds if it's set (not empty)
+            if row['arrival_seconds'].strip():
+                original = float(row['arrival_seconds'])
+                snapped = math.floor(original * args.ticks_per_second) / args.ticks_per_second
+                row['arrival_seconds'] = snapped
+
+            writer.writerow(row)
+
+    print(f"Snapped workload timestamps saved to {args.output_file}")
+
+
+def jitter_command(args):
+    """Handle the jitter subcommand - add uniform random jitter to timestamps"""
+
+    # Check if input file exists
+    input_path = Path(args.input_workload)
+    if not input_path.exists():
+        print(f"Error: Input workload file '{args.input_workload}' not found", file=sys.stderr)
+        sys.exit(1)
+
+    # Check if output file already exists
+    output_path = Path(args.output_file)
+    if output_path.exists() and not args.force:
+        print(f"Error: File '{args.output_file}' already exists. Use -f/--force to overwrite.", file=sys.stderr)
+        sys.exit(1)
+
+    # Ensure input and output are different files
+    if input_path.resolve() == output_path.resolve():
+        print(f"Error: Input and output files must be different", file=sys.stderr)
+        sys.exit(1)
+
+    # Validate delta
+    if args.delta < 0:
+        print(f"Error: delta must be non-negative, got {args.delta}", file=sys.stderr)
+        sys.exit(1)
+
+    # Set random seed (use 42 as default if not provided)
+    seed = args.seed if args.seed is not None else 42
+    rng = np.random.default_rng(seed)
+
+    # Read all rows and group into pipelines
+    with open(input_path) as infile:
+        reader = csv.DictReader(infile)
+        fieldnames = reader.fieldnames
+
+        pipelines = []  # List of (arrival_seconds, [rows])
+        current_pipeline_rows = []
+        current_pipeline_id = None
+        current_arrival = None
+
+        for row in reader:
+            pipeline_id = row['pipeline_id']
+
+            if pipeline_id != current_pipeline_id:
+                # New pipeline - save previous if exists
+                if current_pipeline_rows:
+                    pipelines.append((current_arrival, current_pipeline_rows))
+
+                # Start new pipeline
+                current_pipeline_id = pipeline_id
+
+                # First row must have arrival_seconds
+                if not row['arrival_seconds'].strip():
+                    print(f"Error: First row of pipeline {pipeline_id} missing arrival_seconds", file=sys.stderr)
+                    sys.exit(1)
+
+                # Add jitter in range [0, delta]
+                original = float(row['arrival_seconds'])
+                jitter = rng.uniform(0, args.delta)
+                jittered = original + jitter
+                row['arrival_seconds'] = jittered
+                current_arrival = jittered
+                current_pipeline_rows = [row]
+            else:
+                # Same pipeline - verify no arrival_seconds
+                if row['arrival_seconds'].strip():
+                    print(f"Error: Non-first row of pipeline {pipeline_id} has arrival_seconds", file=sys.stderr)
+                    sys.exit(1)
+
+                current_pipeline_rows.append(row)
+
+        # Don't forget the last pipeline
+        if current_pipeline_rows:
+            pipelines.append((current_arrival, current_pipeline_rows))
+
+    # Sort pipelines by arrival_seconds
+    pipelines.sort(key=lambda x: x[0])
+
+    # Write sorted pipelines
+    with open(output_path, 'w', newline='') as outfile:
+        writer = csv.DictWriter(outfile, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for arrival, rows in pipelines:
+            for row in rows:
+                writer.writerow(row)
+
+    print(f"Jittered workload timestamps saved to {args.output_file}")
 
 
 # entry point if the user just runs "eudoxia".  In that case, argv
@@ -139,7 +273,22 @@ def main(argv=None):
     init_parser = subparsers.add_parser('init', help='Create TOML file with default parameters')
     init_parser.add_argument('output_file', help='Path to output TOML parameters file')
     init_parser.add_argument('-f', '--force', action='store_true', help='Overwrite existing file')
-    
+
+    # Snap subcommand
+    snap_parser = subparsers.add_parser('snap', help='Snap timestamps to tick boundaries (round down)')
+    snap_parser.add_argument('input_workload', help='Path to input CSV workload file')
+    snap_parser.add_argument('output_file', help='Path to output CSV workload file')
+    snap_parser.add_argument('ticks_per_second', type=int, help='Number of ticks per second')
+    snap_parser.add_argument('-f', '--force', action='store_true', help='Overwrite existing file')
+
+    # Jitter subcommand
+    jitter_parser = subparsers.add_parser('jitter', help='Add random jitter to timestamps')
+    jitter_parser.add_argument('input_workload', help='Path to input CSV workload file')
+    jitter_parser.add_argument('output_file', help='Path to output CSV workload file')
+    jitter_parser.add_argument('delta', type=float, help='Maximum jitter to add (uniform distribution [0, delta])')
+    jitter_parser.add_argument('-s', '--seed', type=int, help='Random seed (default: 42)')
+    jitter_parser.add_argument('-f', '--force', action='store_true', help='Overwrite existing file')
+
     args = parser.parse_args(argv)
     
     if args.command is None:
@@ -152,8 +301,12 @@ def main(argv=None):
         gentrace_command(args)
     elif args.command == 'init':
         init_command(args)
+    elif args.command == 'snap':
+        snap_command(args)
+    elif args.command == 'jitter':
+        jitter_command(args)
     else:
-        print(f"Error: Unknown command '{args.command}'. Available commands: run, gentrace, init", file=sys.stderr)
+        print(f"Error: Unknown command '{args.command}'. Available commands: run, gentrace, init, snap, jitter", file=sys.stderr)
         sys.exit(1)
 
 
