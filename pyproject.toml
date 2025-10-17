@@ -10,6 +10,7 @@ dependencies = [
     "pandas",
     "pytest",
     "tomlkit",
+    "matplotlib",
 ]
 requires-python = ">=3.12"
 description = "Simulator to test cloud scheduling algorithms"

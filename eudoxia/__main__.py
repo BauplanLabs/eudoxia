@@ -9,7 +9,7 @@ from pathlib import Path
 from eudoxia.simulator import run_simulator, parse_args_with_defaults, get_param_defaults
 from eudoxia.workload.csv_io import CSVWorkloadReader, CSVWorkloadWriter, WorkloadTraceGenerator
 from eudoxia.workload import WorkloadGenerator
-from eudoxia.tools import snap_command, jitter_command, sensitivity_command, sensitivity_sample_command
+from eudoxia.tools import snap_command, jitter_command, sensitivity_command, sensitivity_sample_command, sensitivity_analysis_plot_command
 import tomlkit
 
 
@@ -177,6 +177,10 @@ def main(argv=None):
     sensitivity_sample_parser.add_argument('--start-seed', type=int, default=42, help='Starting seed for workload generation (default: 42)')
     sensitivity_sample_parser.add_argument('--jitter-seed', type=int, help='Random seed for jitter mutations (default: 42)')
 
+    # Sensitivity-analysis-plot subcommand under tools
+    sensitivity_plot_parser = tools_subparsers.add_parser('sensitivity-analysis-plot', help='Generate plots from sensitivity analysis results')
+    sensitivity_plot_parser.add_argument('results_dir', help='Directory containing results.csv from sensitivity-sample command')
+
     args = parser.parse_args(argv)
     
     if args.command is None:
@@ -199,6 +203,8 @@ def main(argv=None):
         elif args.tool_command == 'sensitivity-sample':
             sensitivity_sample_command(args.params_file, args.output_dir, args.sample_size,
                                       start_seed=args.start_seed, jitter_seed=args.jitter_seed)
+        elif args.tool_command == 'sensitivity-analysis-plot':
+            sensitivity_analysis_plot_command(args.results_dir)
         else:
             tools_parser.print_help()
             sys.exit(1)
