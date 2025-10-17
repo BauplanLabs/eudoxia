@@ -5,10 +5,22 @@ import csv
 import math
 import tomllib
 import numpy as np
+import subprocess
+import multiprocessing
 from pathlib import Path
+from collections import namedtuple
 from eudoxia.simulator import run_simulator, parse_args_with_defaults
 from eudoxia.workload.csv_io import CSVWorkloadReader, CSVWorkloadWriter, WorkloadTraceGenerator
 from eudoxia.workload import WorkloadGenerator
+
+# Task definition for sensitivity sampling
+SensitivityTask = namedtuple('SensitivityTask', [
+    'workload_index',
+    'params_file',
+    'output_dir',
+    'seed',
+    'jitter_seed'
+])
 
 
 def snap_command(input_workload, output_file, ticks_per_second, force=False):
@@ -143,7 +155,7 @@ def jitter_command(input_workload, output_file, delta, seed=None, force=False):
     print(f"Jittered workload timestamps saved to {output_file}")
 
 
-def sensitivity_analysis(params_file, workload, output_dir, jitter_seed=None):
+def sensitivity_command(params_file, workload, output_dir, jitter_seed=None):
     """
     Run sensitivity analysis with snap, jitter, and tick mutations.
 
@@ -276,4 +288,143 @@ def sensitivity_analysis(params_file, workload, output_dir, jitter_seed=None):
     print(f"Sensitivity analysis complete!")
     print(f"Results saved to: {output_csv}")
     print(f"Mutated workloads saved to: {workloads_dir}/")
+    print(f"{'='*60}")
+
+
+def _sensitivity_task(task):
+    """
+    Generate a workload and run sensitivity analysis with stdout/stderr redirected to a log file.
+    Designed to be used with multiprocessing.Pool.map()
+
+    Args:
+        task: SensitivityTask namedtuple
+
+    Returns:
+        Tuple of (workload_index, success)
+    """
+    output_dir_path = Path(task.output_dir)
+    workload_file = output_dir_path / f"w{task.workload_index}.csv"
+    sensitivity_output_dir = output_dir_path / f"w{task.workload_index}"
+    output_log = output_dir_path / f"w{task.workload_index}.log"
+
+    # Redirect stdout and stderr to log file (line buffered)
+    with open(output_log, 'w', buffering=1) as log_file:
+        sys.stdout = log_file
+        sys.stderr = log_file
+
+        try:
+            # Load parameters
+            with open(task.params_file, 'rb') as f:
+                params = tomllib.load(f)
+            params = parse_args_with_defaults(params)
+
+            # Generate workload with this seed
+            print(f"Generating workload w{task.workload_index}.csv (seed={task.seed})...")
+            params_with_seed = params.copy()
+            params_with_seed['seed'] = task.seed
+
+            workload_gen = WorkloadGenerator(**params_with_seed)
+            trace_generator = WorkloadTraceGenerator(
+                workload=workload_gen,
+                ticks_per_second=params['ticks_per_second'],
+                duration_secs=params['duration']
+            )
+
+            with open(workload_file, 'w') as f:
+                writer = CSVWorkloadWriter(f)
+                for row in trace_generator.generate_rows():
+                    writer.write_row(row)
+
+            print(f"Workload w{task.workload_index}.csv generated\n")
+
+            # Run sensitivity analysis
+            sensitivity_command(task.params_file, str(workload_file), str(sensitivity_output_dir), jitter_seed=task.jitter_seed)
+
+            return task.workload_index, True
+        except Exception as e:
+            print(f"\nERROR: {e}")
+            import traceback
+            traceback.print_exc()
+            return task.workload_index, False
+
+
+def sensitivity_sample_command(params_file, output_dir, sample_size, start_seed=42, jitter_seed=None):
+    """
+    Run sensitivity analysis on multiple generated workloads.
+
+    Args:
+        params_file: Path to TOML parameters file
+        output_dir: Directory to save all results
+        sample_size: Number of workload samples to generate (N)
+        start_seed: Starting seed for workload generation (default: 42)
+        jitter_seed: Random seed for jitter mutations (default: 42)
+    """
+
+    # Check if params file exists
+    if not Path(params_file).exists():
+        print(f"Error: Parameters file '{params_file}' not found", file=sys.stderr)
+        sys.exit(1)
+
+    # Create output directory if it doesn't exist
+    output_dir_path = Path(output_dir)
+    output_dir_path.mkdir(parents=True, exist_ok=True)
+
+    print(f"Generating {sample_size} workloads and running sensitivity analysis in parallel...")
+    print(f"Using seeds: {start_seed} to {start_seed + sample_size - 1}")
+    print(f"Pool size: {sample_size} processes")
+    print(f"Output logs will be saved to w0.log, w1.log, etc.\n")
+
+    # Prepare tasks for pool.map
+    tasks = []
+    for i in range(sample_size):
+        seed = start_seed + i
+        task = SensitivityTask(
+            workload_index=i,
+            params_file=params_file,
+            output_dir=output_dir,
+            seed=seed,
+            jitter_seed=jitter_seed
+        )
+        tasks.append(task)
+
+    # Run in parallel using multiprocessing.Pool
+    with multiprocessing.Pool(processes=sample_size) as pool:
+        results = pool.map(_sensitivity_task, tasks)
+
+    # Report results
+    print()
+    for workload_idx, success in results:
+        if success:
+            print(f"✓ Completed sensitivity analysis for workload {workload_idx}")
+        else:
+            print(f"✗ ERROR: Sensitivity analysis for workload {workload_idx} failed")
+            print(f"  Check log file: w{workload_idx}.log")
+
+    # Concatenate all individual results into top-level results.csv
+    print(f"\nConcatenating results...")
+    consolidated_results = []
+    for i in range(sample_size):
+        individual_results_path = output_dir_path / f"w{i}" / "results.csv"
+        if individual_results_path.exists():
+            with open(individual_results_path) as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    row['workload'] = f'w{i}'
+                    consolidated_results.append(row)
+
+    # Write consolidated results
+    if consolidated_results:
+        output_csv = output_dir_path / "results.csv"
+        fieldnames = ['workload'] + [k for k in consolidated_results[0].keys() if k != 'workload']
+        with open(output_csv, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(consolidated_results)
+        print(f"Consolidated results saved to: {output_csv}")
+
+    print(f"\n{'='*60}")
+    print(f"Sensitivity sampling complete!")
+    print(f"Generated {sample_size} workloads: w0.csv to w{sample_size-1}.csv")
+    print(f"Sensitivity results saved in subdirectories: w0/ to w{sample_size-1}/")
+    print(f"Logs saved to: w0.log to w{sample_size-1}.log")
     print(f"{'='*60}")
