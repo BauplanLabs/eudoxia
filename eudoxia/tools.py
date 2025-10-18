@@ -4,7 +4,9 @@ import sys
 import csv
 import math
 import tomllib
+import logging
 import numpy as np
+import pandas as pd
 import subprocess
 import multiprocessing
 from pathlib import Path
@@ -427,4 +429,139 @@ def sensitivity_sample_command(params_file, output_dir, sample_size, start_seed=
     print(f"Generated {sample_size} workloads: w0.csv to w{sample_size-1}.csv")
     print(f"Sensitivity results saved in subdirectories: w0/ to w{sample_size-1}/")
     print(f"Logs saved to: w0.log to w{sample_size-1}.log")
+    print(f"{'='*60}")
+
+
+def sensitivity_analysis_plot_command(results_dir):
+    """
+    Generate plots from sensitivity analysis results.
+
+    Produces one plot per metric showing average error relative to the finest-grained
+    tick mutation, with x-axis as log-scale ticks_per_second and y-axis as average
+    percent error across workloads.
+
+    Args:
+        results_dir: Directory containing results.csv from sensitivity-sample command
+    """
+
+    # Suppress matplotlib debug output before importing
+    logging.getLogger('matplotlib').setLevel(logging.WARNING)
+    logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
+    logging.getLogger('matplotlib.pyplot').setLevel(logging.WARNING)
+
+    # Import matplotlib here to ensure logging is suppressed
+    import matplotlib.pyplot as plt
+
+    # Check if results directory exists
+    results_dir_path = Path(results_dir)
+    if not results_dir_path.exists():
+        print(f"Error: Results directory '{results_dir}' not found", file=sys.stderr)
+        sys.exit(1)
+
+    # Check if results.csv exists
+    results_csv = results_dir_path / "results.csv"
+    if not results_csv.exists():
+        print(f"Error: results.csv not found in '{results_dir}'", file=sys.stderr)
+        sys.exit(1)
+
+    # Read results
+    df = pd.read_csv(results_csv)
+
+    # Metrics to plot
+    metrics = ['pipelines_created', 'pipelines_completed', 'throughput',
+               'p99_latency', 'assignments', 'suspensions', 'failures']
+
+    # Find the baseline: tick mutation at max ticks_per_second
+    max_tps = df['ticks_per_second'].max()
+    baseline = df[(df['mutation_type'] == 'tick') & (df['ticks_per_second'] == max_tps)]
+
+    if baseline.empty:
+        print(f"Error: No baseline found (tick mutation at ticks_per_second={max_tps})", file=sys.stderr)
+        sys.exit(1)
+
+    # Group baseline by workload to get baseline values for each workload
+    baseline_by_workload = baseline.set_index('workload')
+
+    # For each metric, create a plot
+    for metric in metrics:
+        print(f"Generating plot for {metric}...")
+
+        # Calculate absolute errors as percentage of baseline for each (mutation_type, ticks_per_second, workload) combination
+        errors = []
+        for _, row in df.iterrows():
+            workload = row['workload']
+            if workload in baseline_by_workload.index:
+                baseline_value = baseline_by_workload.loc[workload, metric]
+                if baseline_value != 0:
+                    # Absolute error as percentage of baseline
+                    error = (abs(row[metric] - baseline_value) / baseline_value) * 100
+                else:
+                    # Handle division by zero - use absolute difference
+                    print("Warning!  Baseline for f{metric}, tps=f{max_tps}, workload=f{workload} is zero, using non-normalized error")
+                    error = abs(row[metric] - baseline_value)
+                errors.append({
+                    'mutation_type': row['mutation_type'],
+                    'ticks_per_second': row['ticks_per_second'],
+                    'workload': workload,
+                    'error': error
+                })
+
+        errors_df = pd.DataFrame(errors)
+
+        # Calculate average absolute error across workloads for each (mutation_type, ticks_per_second)
+        avg_errors = errors_df.groupby(['mutation_type', 'ticks_per_second'])['error'].mean().reset_index()
+
+        # Pivot data for plotting: ticks_per_second as index, mutation_type as columns
+        plot_data = avg_errors.pivot(index='ticks_per_second', columns='mutation_type', values='error')
+
+        # Create plot using pandas
+        ax = plot_data.plot.line(
+            marker='o',
+            figsize=(10, 6),
+            xlabel='Ticks per Second (log scale)',
+            ylabel='Average Absolute Error (%)',
+            title=f'Sensitivity Analysis: {metric}',
+            logx=True,
+            legend=True,
+            color={'tick': 'black', 'snap': 'gray', 'jitter': 'red'}
+        )
+
+        # Set line widths and styles
+        for line in ax.get_lines():
+            label = line.get_label()
+            if label == 'tick':
+                line.set_linestyle('--')
+                line.set_linewidth(1)
+            elif label == 'snap':
+                line.set_linestyle('-')
+                line.set_linewidth(2)
+            elif label == 'jitter':
+                line.set_linestyle('-')
+                line.set_linewidth(1)
+
+        # Set y-axis limits
+        ax.set_ylim(bottom=0, top=max(100, ax.get_ylim()[1]))
+
+        # Remove top and right spines
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+        # Legend with no frame
+        ax.legend(frameon=False)
+
+        # Save plot as SVG
+        output_file = results_dir_path / f"{metric}_errors.svg"
+        fig = ax.get_figure()
+        fig.savefig(output_file, format='svg', bbox_inches='tight')
+        plt.close(fig)
+
+        print(f"  Saved plot to {output_file}")
+
+        # Save CSV data
+        csv_output_file = results_dir_path / f"{metric}_errors.csv"
+        plot_data.to_csv(csv_output_file)
+        print(f"  Saved data to {csv_output_file}")
+
+    print(f"\n{'='*60}")
+    print(f"All plots generated in {results_dir}")
     print(f"{'='*60}")
