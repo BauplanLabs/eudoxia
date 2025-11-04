@@ -86,7 +86,9 @@ class Container:
         self._num_ticks_left -= 1
 
     def is_completed(self):
-        return (self._num_ticks_left == 0)
+        # Use <= to handle edge case: immediate OOM results in 0 ticks,
+        # but tick() may still be called, causing _num_ticks_left to go negative
+        return (self._num_ticks_left <= 0)
 
     def can_suspend_container(self) -> bool:
         """Can only suspend a container if between execution of
