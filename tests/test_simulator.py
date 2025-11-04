@@ -6,18 +6,23 @@ from eudoxia.utils import Priority
 
 class MockWorkload(Workload):
     """
-    Mock workload that returns pre-defined pipelines at specific ticks.
+    Mock workload that returns pre-defined pipelines at specific times.
     Useful for testing schedulers with controlled workloads.
     """
-    
-    def __init__(self, workload_schedule: Dict[int, List[Pipeline]]):
+
+    def __init__(self, workload_schedule: Dict[float, List[Pipeline]], ticks_per_second: int):
         """
         Args:
-            workload_schedule: Dict mapping tick number to list of pipelines to return
+            workload_schedule: Dict mapping arrival time in seconds to list of pipelines to return
+            ticks_per_second: Simulation ticks per second (for converting seconds to ticks)
         """
-        self.workload_schedule = workload_schedule
+        # Convert seconds-based schedule to tick-based schedule
+        self.workload_schedule = {}
+        for arrival_seconds, pipelines in workload_schedule.items():
+            tick = int(arrival_seconds * ticks_per_second)
+            self.workload_schedule[tick] = pipelines
         self.current_tick = 0
-    
+
     def run_one_tick(self) -> List[Pipeline]:
         """Return pipelines scheduled for the current tick"""
         pipelines = self.workload_schedule.get(self.current_tick, [])
@@ -35,30 +40,39 @@ def test_run_simulator_basic(scheduler_algo):
     params['scheduler_algo'] = scheduler_algo
     if scheduler_algo == "priority-pool":
         params['num_pools'] = 2  # priority-pool scheduler requires 2 pools
-    params['duration'] = 400 / params['ticks_per_second']
 
-    # simple workload with 3 jobs, arriving once every 100 ticks
+    # simple workload with 3 jobs
     pipelines = []
     for i in range(3):
         pipeline = Pipeline(f"test{i+1}", Priority.BATCH_PIPELINE)
         op = Operator()
-        seg = Segment(baseline_cpu_seconds=5, cpu_scaling="linear3", storage_read_gb=10)
+        # CPU-only segment (no I/O): storage_read_gb=0 means no I/O time
+        seg = Segment(baseline_cpu_seconds=3, cpu_scaling="const", storage_read_gb=0)
         op.add_segment(seg)
         pipeline.add_operator(op)
         pipelines.append(pipeline)
 
     workload = MockWorkload({
-        100: [pipelines[0]],
-        200: [pipelines[1]],
-        300: [pipelines[2]],
-    })
+        1.0: [pipelines[0]],
+        2.0: [pipelines[1]],
+        3.0: [pipelines[2]],
+    }, params['ticks_per_second'])
+
+    params['duration'] = 5.5
+
+    if scheduler_algo == "naive":
+        # they are run one at a time, so at 5.5 seconds we will only have
+        # completed one of the 3 second jobs
+        expected_completions = 1
+    else:
+        # all jobs can run concurrently, and take 3 seconds.
+        # At time 5.5, the first two jobs will be done, but not the last one
+        expected_completions = 2
 
     # run simulator and check results
     stats = run_simulator(params, workload=workload)
     assert stats.pipelines_created == 3, f"{scheduler_algo}: Expected 3 created pipelines, got {stats.pipelines_created}"
-
-    # TODO: can we calculate how long we need to way to see them finish?
-    #assert stats.pipelines_completed == 3, f"{scheduler_algo}: Expected 3 completed pipelines, got {stats.pipelines_completed}"
+    assert stats.pipelines_completed == expected_completions, f"{scheduler_algo}: Expected {expected_completions} completed pipelines, got {stats.pipelines_completed}"
 
 
 @pytest.mark.parametrize("ticks_per_second", [100_000, 10_000, 1_000, 100])  # 10us, 100us, 1ms, 10ms
@@ -87,9 +101,9 @@ def test_tick_length(ticks_per_second):
         pipeline.add_operator(op)
         pipelines.append(pipeline)
 
-    # All pipelines arrive at tick 0
-    workload_schedule = {0: pipelines}
-    mock_workload = MockWorkload(workload_schedule)
+    # All pipelines arrive at 0 seconds
+    workload_schedule = {0.0: pipelines}
+    mock_workload = MockWorkload(workload_schedule, ticks_per_second)
 
     # Run simulation
     stats = run_simulator(params, workload=mock_workload)
