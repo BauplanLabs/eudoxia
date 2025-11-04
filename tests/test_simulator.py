@@ -112,3 +112,43 @@ def test_tick_length(ticks_per_second):
     # (each job takes 1 second, and with 1 CPU they run sequentially)
     assert stats.pipelines_created == 10, f"Expected 10 pipelines created, got {stats.pipelines_created}"
     assert stats.pipelines_completed == 4, f"Expected 4 pipelines completed, got {stats.pipelines_completed}"
+
+
+@pytest.mark.parametrize("scheduler_algo", ["priority", "priority-pool"])
+def test_oom_retry(scheduler_algo):
+    """Test that schedulers handle OOM errors and retry with more resources"""
+    from eudoxia.workload import Operator, Segment
+
+    # Configure with limited resources
+    params = get_param_defaults()
+    params['scheduler_algo'] = scheduler_algo
+    params['ram_pool'] = 100  # 100 GB RAM total
+    params['cpu_pool'] = 8
+    params['duration'] = 10.0
+    if scheduler_algo == "priority-pool":
+        params['num_pools'] = 2
+
+    # Create a single pipeline with high memory requirement
+    # Reading 20GB of data means needing 20GB RAM (memory_gb defaults to storage_read_gb)
+    # Priority schedulers will retry with doubled RAM until it fits (and is < 50% of pool)
+    # Note: priority-pool splits resources between 2 pools, so each pool has 50GB
+    pipeline = Pipeline("oom_test", Priority.BATCH_PIPELINE)
+    op = Operator()
+    seg = Segment(baseline_cpu_seconds=1.0, cpu_scaling="const", storage_read_gb=20)
+    op.add_segment(seg)
+    pipeline.add_operator(op)
+
+    workload = MockWorkload({0.0: [pipeline]}, params['ticks_per_second'])
+
+    # Run simulation
+    stats = run_simulator(params, workload=workload)
+
+    # Verify pipeline was created and eventually completed
+    assert stats.pipelines_created == 1, f"{scheduler_algo}: Expected 1 pipeline created, got {stats.pipelines_created}"
+    assert stats.pipelines_completed == 1, f"{scheduler_algo}: Expected 1 pipeline completed after OOM retry, got {stats.pipelines_completed}"
+
+    # Verify retries happened: failures = assignments - 1 (last assignment succeeds)
+    assert stats.assignments > 1, f"{scheduler_algo}: Expected multiple assignments (retries), got {stats.assignments}"
+    assert stats.failures == stats.assignments - 1, f"{scheduler_algo}: Expected failures={stats.assignments-1}, got {stats.failures}"
+    assert 'OOM' in stats.failure_error_counts, f"{scheduler_algo}: Expected OOM errors in failure counts"
+    assert stats.failure_error_counts['OOM'] == stats.failures, f"{scheduler_algo}: All failures should be OOM"
