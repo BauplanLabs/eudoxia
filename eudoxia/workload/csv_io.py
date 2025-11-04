@@ -155,7 +155,7 @@ class CSVWorkloadReader(WorkloadReader):
                 memory_gb=row.memory_gb,
                 storage_read_gb=row.storage_read_gb
             )
-            
+
             # Create the operator with exactly one segment
             operator = Operator()
             operator.add_segment(segment)
