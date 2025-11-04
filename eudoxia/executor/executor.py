@@ -1,6 +1,6 @@
 import logging
 from typing import List
-from .assignment import Suspend, Assignment, Failure
+from .assignment import Suspend, Assignment, ExecutionResult
 from .resource_pool import ResourcePool
 
 logger = logging.getLogger(__name__)
@@ -57,16 +57,16 @@ class Executor:
             ret.extend(self.pools[pid].container_tick_times)
         return ret
 
-    def run_one_tick(self, suspensions: List[Suspend], 
-                     assignments: List[Assignment]) -> List[Failure]:
+    def run_one_tick(self, suspensions: List[Suspend],
+                     assignments: List[Assignment]) -> List[ExecutionResult]:
         '''
-        Largely passing through relevant assignments to the pool they belong to. 
+        Largely passing through relevant assignments to the pool they belong to.
         '''
-        failures: List[Failure] = []
+        results: List[ExecutionResult] = []
         for id_ in range(self.num_pools):
             pool_suspensions = [s for s in suspensions if s.pool_id == id_]
             pool_assignments = [a for a in assignments if a.pool_id == id_]
-            pool_failures = self.pools[id_].run_one_tick(pool_suspensions, pool_assignments)
-            failures.extend(pool_failures)
+            pool_results = self.pools[id_].run_one_tick(pool_suspensions, pool_assignments)
+            results.extend(pool_results)
 
-        return failures
+        return results

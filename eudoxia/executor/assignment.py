@@ -11,12 +11,13 @@ class Suspend:
         self.container_id = container_id
         self.pool_id = pool_id
 
-class Failure: 
+class ExecutionResult:
     """
-    Tracks when jobs fail and tracks error message to provide back to scheduler
+    Tracks execution results for containers, both successes and failures.
+    For failures, the error field contains an error message.
     """
     def __init__(self, ops: List[Operator], cpu, ram, priority: Priority,
-                 pool_id: int, container_id = None, error: str = None): 
+                 pool_id: int, container_id = None, error: str = None):
         self.ops = ops
         self.cpu = cpu
         self.ram = ram
@@ -25,8 +26,15 @@ class Failure:
         self.container_id = container_id
         self.error = error
 
+    def failed(self) -> bool:
+        """Returns True if this execution result represents a failure."""
+        return self.error is not None
+
     def __repr__(self):
-        return f"container failed {self.error}: container={self.container_id} cpus={self.cpu} ram_gb={self.ram}"
+        if self.error is not None:
+            return f"container failed {self.error}: container={self.container_id} cpus={self.cpu} ram_gb={self.ram}"
+        else:
+            return f"container succeeded: container={self.container_id} cpus={self.cpu} ram_gb={self.ram}"
 
 class Assignment:
     """

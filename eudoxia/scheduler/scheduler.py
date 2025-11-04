@@ -1,7 +1,7 @@
 from typing import List, Tuple, Dict
 import uuid
 from eudoxia.executor import Executor
-from eudoxia.executor.assignment import Suspend, Assignment, Failure
+from eudoxia.executor.assignment import Suspend, Assignment, ExecutionResult
 from eudoxia.workload import Pipeline, Operator
 from eudoxia.utils import Priority
 from .decorators import INIT_ALGOS, SCHEDULING_ALGOS
@@ -28,8 +28,8 @@ class Scheduler:
         logger.info(scheduler_algo)
         INIT_ALGOS[scheduler_algo](self)
 
-    def run_one_tick(self, failures: List[Failure], 
+    def run_one_tick(self, results: List[ExecutionResult],
                      pipelines: List[Pipeline]) -> Tuple[List[Suspend], List[Assignment]]:
-        suspensions, assignments = self.algo_func(self, failures, pipelines)
+        suspensions, assignments = self.algo_func(self, results, pipelines)
         return (suspensions, assignments)
 
