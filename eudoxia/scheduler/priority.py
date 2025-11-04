@@ -2,7 +2,7 @@ from typing import List, Tuple, Dict
 import uuid
 import logging
 from eudoxia.workload import Pipeline, Operator
-from eudoxia.executor.assignment import Assignment, Failure, Suspend
+from eudoxia.executor.assignment import Assignment, ExecutionResult, Suspend
 from eudoxia.utils import Priority
 from .decorators import register_scheduler_init, register_scheduler
 from .waiting_queue import WaitingQueueJob
@@ -31,14 +31,14 @@ def get_pool_with_max_avail_ram(s, pool_stats):
     return id_
 
 @register_scheduler(key="priority")
-def priority_scheduler(s, failures: List[Failure],
+def priority_scheduler(s, results: List[ExecutionResult],
                        pipelines: List[Pipeline]) -> Tuple[List[Suspend], List[Assignment]]:
     """
     Assign jobs to resources purely in order of priority. This function WILL
-    STARVE low priority jobs. 
+    STARVE low priority jobs.
 
     Args:
-        failures: Jobs failed by the executor last tick
+        results: Execution results from the executor last tick
         pipelines: Newly generated pipelines arriving
     Returns:
         Tuple[List[Suspend], List[Assignment]]:
@@ -54,6 +54,9 @@ def priority_scheduler(s, failures: List[Failure],
             s.interactive_jobs.append(job)
         elif p.priority == Priority.BATCH_PIPELINE:
             s.batch_ppln_jobs.append(job)
+
+    # Filter results to get only failures
+    failures = [r for r in results if r.failed()]
 
     for f in failures:
         # Try to get pipeline from the first operator

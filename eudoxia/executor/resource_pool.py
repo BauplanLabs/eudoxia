@@ -1,6 +1,6 @@
 import logging
 from typing import List
-from .assignment import Assignment, Suspend, Failure
+from .assignment import Assignment, Suspend, ExecutionResult
 from .container import Container
 
 logger = logging.getLogger(__name__)
@@ -77,8 +77,8 @@ class ResourcePool:
         out_line = f"{self.i}, {cpu_util:.2f}, {ram_util:.2f}\n"
         self.outfile.write(out_line)
 
-    def run_one_tick(self, suspensions: List[Suspend], 
-                     assignments: List[Assignment]) -> List[Failure]:
+    def run_one_tick(self, suspensions: List[Suspend],
+                     assignments: List[Assignment]) -> List[ExecutionResult]:
         """
         Run a single tick for the executor, decrement remaining ticks for all
         active containers, remove completed ones, and update relevant
@@ -117,26 +117,27 @@ class ResourcePool:
             self.suspended_containers.append(c)
 
         to_remove = []
-        failures = []
+        results = []
         for c in self.active_containers:
             c.tick()
-            if c.is_completed(): 
+            if c.is_completed():
                 # self.status_report()
                 self.avail_cpu_pool += c.cpu
-                self.avail_ram_pool += c.ram 
+                self.avail_ram_pool += c.ram
                 to_remove.append(c)
 
-                # record a job failure and log it to the console
-                if c.error is not None:
-                    f = Failure(ops=c.operators, cpu=c.cpu, ram=c.ram,
-                                priority=c.priority, pool_id=c.pool_id, container_id=c.container_id, error=c.error)
-                    logger.info(f)
-                    failures.append(f)
-                else:
-                    logger.info(f"container completed: {c}")
+                # Create an ExecutionResult for every completed container
+                result = ExecutionResult(ops=c.operators, cpu=c.cpu, ram=c.ram,
+                                        priority=c.priority, pool_id=c.pool_id,
+                                        container_id=c.container_id, error=c.error)
+                logger.info(result)
+                results.append(result)
+
+                # Track successful completions
+                if c.error is None:
                     self.num_completed += 1
         for c in to_remove:
             self.active_containers.remove(c)
 
         self.log_pool_utilization()
-        return failures
+        return results

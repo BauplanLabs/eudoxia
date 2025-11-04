@@ -172,7 +172,7 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     num_suspenions = 0
     num_failures = 0
     failure_error_counts = defaultdict(int)
-    executor_failures = []
+    executor_results = []
 
     # IMPORTANT!  This is the main simulation loop.
     for tick_number in range(max_ticks):
@@ -181,15 +181,17 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         new_pipelines: List[Pipeline] = workload.run_one_tick()
         for p in new_pipelines:
             logger.info(f"Pipeline arrived with Priority {p.priority} and {len(p.values)} op(s)")
-        suspensions, assignments = scheduler.run_one_tick(executor_failures, new_pipelines)
-        executor_failures = executor.run_one_tick(suspensions, assignments)
+        suspensions, assignments = scheduler.run_one_tick(executor_results, new_pipelines)
+        executor_results = executor.run_one_tick(suspensions, assignments)
 
         # track stats
         num_pipelines_created += len(new_pipelines)
         num_assignments += len(assignments)
         num_suspenions += len(suspensions)
-        num_failures += len(executor_failures)
-        for failure in executor_failures:
+        # Count only failures
+        failures = [r for r in executor_results if r.failed()]
+        num_failures += len(failures)
+        for failure in failures:
             failure_error_counts[failure.error] += 1
 
     # TODO: better way to calculate work throuphput, going by num ops, etc. is

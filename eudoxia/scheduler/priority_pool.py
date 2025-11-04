@@ -2,7 +2,7 @@ from typing import List, Tuple, Dict
 import uuid
 import logging
 from eudoxia.workload import Pipeline, Operator
-from eudoxia.executor.assignment import Assignment, Failure, Suspend
+from eudoxia.executor.assignment import Assignment, ExecutionResult, Suspend
 from eudoxia.utils import Priority
 from .decorators import register_scheduler_init, register_scheduler
 from .waiting_queue import WaitingQueueJob
@@ -21,15 +21,15 @@ def init_priority_pool_scheduler(s):
     s.oom_failed_to_run = 0
 
 @register_scheduler(key="priority-pool")
-def priority_pool_scheduler(s, failures: List[Failure],
+def priority_pool_scheduler(s, results: List[ExecutionResult],
                        pipelines: List[Pipeline]) -> Tuple[List[Suspend], List[Assignment]]:
     """
     Scheduler that assigns jobs to dedicated pools based on priority.
     Interactive/query jobs go to one pool, batch jobs to another.
     This scheduler doesn't perform preemption/suspension.
-    
+
     Args:
-        failures: Jobs failed by the executor last tick
+        results: Execution results from the executor last tick
         pipelines: Newly generated pipelines arriving
     Returns:
         Tuple[List[Suspend], List[Assignment]]:
@@ -45,6 +45,9 @@ def priority_pool_scheduler(s, failures: List[Failure],
             s.interactive_jobs.append(job)
         elif p.priority == Priority.BATCH_PIPELINE:
             s.batch_ppln_jobs.append(job)
+
+    # Filter results to get only failures
+    failures = [r for r in results if r.failed()]
 
     for f in failures:
         job = WaitingQueueJob(priority=f.priority, p=None, ops=f.ops,

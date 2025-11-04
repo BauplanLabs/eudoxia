@@ -1,3 +1,3 @@
 from .executor import Executor
-from .assignment import Assignment, Failure, Suspend
+from .assignment import Assignment, ExecutionResult, Suspend
 
