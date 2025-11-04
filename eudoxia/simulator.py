@@ -51,7 +51,7 @@ def get_param_defaults() -> Dict:
         "duration": 60,
         # number of ticks per second (100,000 ticks per second by default = 10 microseconds per tick)
         "ticks_per_second": 100_000,
-        
+
         ### Workload Generation Params ###
         # how many seconds on average the dispatcher will wait between generating pipelines
         "waiting_seconds_mean": 10.0,
@@ -68,10 +68,10 @@ def get_param_defaults() -> Dict:
         # value between 0 and 1 indicating on average how IO heavy a segment is. Low
         # value is IO heavier
         "cpu_io_ratio": 0.5,
-        
+
         ### Scheduler Params ###
         "scheduler_algo": "priority",
-        
+
         ### Executor Params ###
         # number of resource pools for executors
         "num_pools": 1,
