@@ -48,7 +48,7 @@ def priority_pool_scheduler(s, failures: List[Failure],
 
     for f in failures:
         job = WaitingQueueJob(priority=f.priority, p=None, ops=f.ops,
-                              cid=f.cid, pool_id=f.pool_id, old_ram=f.ram, old_cpu=f.cpu,
+                              container_id=f.container_id, pool_id=f.pool_id, old_ram=f.ram, old_cpu=f.cpu,
                               error=f.error)
         if f.priority == Priority.QUERY:
             s.qry_jobs.append(job)
@@ -61,23 +61,23 @@ def priority_pool_scheduler(s, failures: List[Failure],
         for c in s.executor.pools[pool_id].suspending_containers:
             job = WaitingQueueJob(priority=c.priority, p=None,
                                   ops=c.operators, pool_id=pool_id,
-                                  cid=c.cid, old_ram=c.ram, old_cpu=c.cpu,
+                                  container_id=c.container_id, old_ram=c.ram, old_cpu=c.cpu,
                                   error=c.error)
-            # c.cid is UUID type. must use it represented as an int to have
+            # c.container_id is UUID type. must use it represented as an int to have
             # it act as key in python dict
-            s.suspending[c.cid] = job
+            s.suspending[c.container_id] = job
 
     for pool_id in range(s.executor.num_pools):
         for container in s.executor.pools[pool_id].suspended_containers:
-            if container.cid in s.suspending:
-                job = s.suspending[container.cid]
+            if container.container_id in s.suspending:
+                job = s.suspending[container.container_id]
                 if job.priority == Priority.QUERY:
                     s.qry_jobs.append(job)
                 elif job.priority == Priority.INTERACTIVE:
                     s.interactive_jobs.append(job)
                 elif job.priority == Priority.BATCH_PIPELINE:
                     s.batch_ppln_jobs.append(job)
-                del s.suspending[container.cid]
+                del s.suspending[container.container_id]
 
     pool_stats = {}
     for i in range(s.executor.num_pools):

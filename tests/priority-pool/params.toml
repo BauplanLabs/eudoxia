@@ -2,3 +2,4 @@ waiting_seconds_mean = 6.0
 duration = 6000
 num_pools = 2
 scheduler_algo = "priority-pool"
+ticks_per_second = 1000
