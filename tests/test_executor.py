@@ -17,7 +17,8 @@ def test_resource_pool_basic():
         cpu_pool=10,
         ram_pool=100,
         ticks_per_second=10,
-        tracker=DependencyTracker()
+        tracker=DependencyTracker(),
+        multi_operator_containers=True
     )
 
     # Create pipeline and operator for successful container
@@ -95,7 +96,8 @@ def test_resource_pool_dependencies():
         cpu_pool=10,
         ram_pool=100,
         ticks_per_second=10,
-        tracker=tracker
+        tracker=tracker,
+        multi_operator_containers=True
     )
 
     # Create pipeline with A -> B
@@ -122,7 +124,7 @@ def test_resource_pool_dependencies():
     results = pool.run_one_tick([], [assignment_b])
     assert len(results) == 1
     assert results[0].failed()
-    assert "incomplete parent dependencies" in results[0].error
+    assert results[0].error == "dependency"
 
 
 def test_dependency_tracker():
@@ -148,8 +150,7 @@ def test_dependency_tracker():
     )
 
     error = tracker.verify_assignment_dependencies(assignment_b)
-    assert error is not None
-    assert "incomplete parent dependencies" in error
+    assert error == "dependency"
 
 
 def test_tracker_cleanup():
