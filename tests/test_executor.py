@@ -150,3 +150,33 @@ def test_dependency_tracker():
     error = tracker.verify_assignment_dependencies(assignment_b)
     assert error is not None
     assert "incomplete parent dependencies" in error
+
+
+def test_tracker_cleanup():
+    """Test that DependencyTracker cleans up completed pipelines"""
+    tracker = DependencyTracker()
+
+    # Create simple pipeline with one operator
+    pipeline = Pipeline(pipeline_id="cleanup_test", priority=Priority.BATCH_PIPELINE)
+    op = Operator()
+    pipeline.add_operator(op)
+
+    # Create tracker by validating an assignment
+    assignment = Assignment(
+        ops=[op],
+        cpu=1,
+        ram=10,
+        priority=Priority.BATCH_PIPELINE,
+        pool_id=0,
+        pipeline_id="cleanup_test"
+    )
+    tracker.verify_assignment_dependencies(assignment)
+
+    # Tracker should exist
+    assert "cleanup_test" in tracker.dependency_trackers
+
+    # Mark operator as complete
+    tracker.mark_operators_success([op])
+
+    # Tracker should be cleaned up
+    assert "cleanup_test" not in tracker.dependency_trackers

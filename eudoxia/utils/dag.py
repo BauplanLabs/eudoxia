@@ -88,18 +88,22 @@ class DAGDependencyTracker:
         assert not self.succeeded[node], f"Node {node.id} already marked as succeeded"
         self.succeeded[node] = True
 
-    def all_parents_ready(self, node: Node, additional_nodes: List[Node] = []) -> bool:
+    def all_nodes_complete(self) -> bool:
+        """Check if all nodes in the DAG have been marked as succeeded."""
+        return all(self.succeeded.values())
+
+    def all_dependencies_satisfied(self, node: Node, additional_nodes: List[Node] = []) -> bool:
         """
-        Check if all parent nodes are ready for this node to execute.
-        A parent is ready if it has succeeded OR is in the additional_nodes list.
+        Check if all dependencies are satisfied for this node to execute.
+        A dependency is satisfied if the parent has succeeded OR is in the additional_nodes list.
 
         Args:
             node: The node to check dependencies for
             additional_nodes: Optional list of nodes that are being assigned together
-                             (parents in this list are considered ready even if not succeeded)
+                             (parents in this list are considered satisfied even if not succeeded)
 
         Returns:
-            True if all parents are ready, False otherwise
+            True if all dependencies are satisfied, False otherwise
         """
         additional_set = set(additional_nodes)
         for parent in node.parents:

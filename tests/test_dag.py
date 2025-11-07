@@ -149,29 +149,29 @@ def test_dag_dependency_tracker():
     assert tracker.succeeded[node_c] == False
 
     # Node A (no parents) should be ready
-    assert tracker.all_parents_ready(node_a) == True
+    assert tracker.all_dependencies_satisfied(node_a) == True
 
     # Node B (parent A not complete) should not be ready
-    assert tracker.all_parents_ready(node_b) == False
+    assert tracker.all_dependencies_satisfied(node_b) == False
 
     # Node B should be ready if A is in additional_nodes
-    assert tracker.all_parents_ready(node_b, [node_a]) == True
+    assert tracker.all_dependencies_satisfied(node_b, [node_a]) == True
 
     # Mark A as succeeded
     tracker.mark_success(node_a)
     assert tracker.succeeded[node_a] == True
 
     # Now B should be ready
-    assert tracker.all_parents_ready(node_b) == True
+    assert tracker.all_dependencies_satisfied(node_b) == True
 
     # C still not ready
-    assert tracker.all_parents_ready(node_c) == False
+    assert tracker.all_dependencies_satisfied(node_c) == False
 
     # Mark B as succeeded
     tracker.mark_success(node_b)
 
     # Now C should be ready
-    assert tracker.all_parents_ready(node_c) == True
+    assert tracker.all_dependencies_satisfied(node_c) == True
 
     # Test that marking twice fails
     with pytest.raises(AssertionError):
