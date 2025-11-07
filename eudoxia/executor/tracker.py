@@ -31,7 +31,7 @@ class DependencyTracker:
         for op in assignment.ops:
             tracker = self.get_or_create_tracker(op.pipeline)
             if not tracker.all_dependencies_satisfied(op, assignment.ops):
-                return f"Invalid assignment: operator {op.id} has incomplete parent dependencies"
+                return "dependency"
         return None
 
     def mark_operators_success(self, ops: List):

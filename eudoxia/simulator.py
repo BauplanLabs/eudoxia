@@ -79,6 +79,8 @@ def get_param_defaults() -> Dict:
         "cpu_pool": 64,
         # GB in RAM pool
         "ram_pool": 500,
+        # allow multiple operators in single container
+        "multi_operator_containers": True,
         # random seed for workload generation
         "random_seed": 10,
     }

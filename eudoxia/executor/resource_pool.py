@@ -14,7 +14,7 @@ class ResourcePool:
 
     A resource pool is analogous to a machine on which we can run containers.
     """
-    def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second, tracker, **kwargs):
+    def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second, tracker, multi_operator_containers=True, **kwargs):
         self.pool_id = pool_id
         self.max_cpu_pool = cpu_pool
         self.max_ram_pool = ram_pool
@@ -23,6 +23,7 @@ class ResourcePool:
         self.ticks_per_second = ticks_per_second
         self.tick_length_secs = 1.0 / ticks_per_second
         self.tracker = tracker  # Shared dependency tracker
+        self.multi_operator_containers = multi_operator_containers
 
         # List of actively running and suspended containers
         self.active_containers: List[Container] = []
@@ -98,6 +99,21 @@ class ResourcePool:
         if len(assignments) > 0:
             self.verify_valid_assignment(assignments)
             for a in assignments:
+                # Validate multi-operator containers
+                if not self.multi_operator_containers and len(a.ops) > 1:
+                    result = ExecutionResult(
+                        ops=a.ops,
+                        cpu=a.cpu,
+                        ram=a.ram,
+                        priority=a.priority,
+                        pool_id=self.pool_id,
+                        container_id=None,
+                        error="multi"
+                    )
+                    results.append(result)
+                    logger.error(f"Assignment validation failed: multiple operators not allowed")
+                    continue
+
                 # Validate operator dependencies
                 error = self.tracker.verify_assignment_dependencies(a)
                 if error:
@@ -112,7 +128,7 @@ class ResourcePool:
                         error=error
                     )
                     results.append(result)
-                    logger.error(f"Assignment validation failed: {error}")
+                    logger.error(f"Assignment validation failed: operator has incomplete parent dependencies")
                     continue
 
                 # Create container only if validation passes
