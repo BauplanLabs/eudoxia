@@ -1,5 +1,6 @@
 import pytest
 from eudoxia.executor.resource_pool import ResourcePool
+from eudoxia.executor.tracker import DependencyTracker
 from eudoxia.executor.assignment import Assignment, Suspend
 from eudoxia.workload.pipeline import Segment, Operator, Pipeline
 from eudoxia.utils import Priority
@@ -15,7 +16,8 @@ def test_resource_pool_basic():
         pool_id=0,
         cpu_pool=10,
         ram_pool=100,
-        ticks_per_second=10
+        ticks_per_second=10,
+        tracker=DependencyTracker()
     )
 
     # Create pipeline and operator for successful container

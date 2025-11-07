@@ -1,21 +1,16 @@
 import uuid
-from typing import Generic, TypeVar, Optional, List
+from typing import Generic, TypeVar, Optional, List, Dict
 '''
 This file implements a general DAG (Directed Acyclic Graph) data structure. Each DAG is composed of
 Nodes, so all DAG node types must subclass Node in order to ensure certain
 fields are present. The DAG supports multiple roots and provides a topological iterator to
 convert to lists of Segments or Operators in dependency order.
 '''
-class Node: 
+class Node:
     def __init__(self):
         self.id = uuid.uuid4()
-        self.complete = False
         self.children = []
         self.parents = []
-
-    def can_node_execute(self) -> bool: 
-        parent_vals = [p.complete for p in self.parents]
-        return all(parent_vals)
 
 
 class DAG[T: Node]:
@@ -77,3 +72,37 @@ class DAGIterator[T: Node]:
                 self.queue.append(child)
 
         return curr
+
+
+class DAGDependencyTracker:
+    """
+    Tracks completion state of nodes in a DAG for execution dependency checking.
+    Keeps Nodes immutable by storing execution state externally.
+    """
+    def __init__(self, dag: DAG):
+        self.dag = dag
+        self.succeeded: Dict[Node, bool] = {node: False for node in dag}
+
+    def mark_success(self, node: Node):
+        """Mark a node as successfully completed."""
+        assert not self.succeeded[node], f"Node {node.id} already marked as succeeded"
+        self.succeeded[node] = True
+
+    def all_parents_ready(self, node: Node, additional_nodes: List[Node] = []) -> bool:
+        """
+        Check if all parent nodes are ready for this node to execute.
+        A parent is ready if it has succeeded OR is in the additional_nodes list.
+
+        Args:
+            node: The node to check dependencies for
+            additional_nodes: Optional list of nodes that are being assigned together
+                             (parents in this list are considered ready even if not succeeded)
+
+        Returns:
+            True if all parents are ready, False otherwise
+        """
+        additional_set = set(additional_nodes)
+        for parent in node.parents:
+            if not self.succeeded[parent] and parent not in additional_set:
+                return False
+        return True

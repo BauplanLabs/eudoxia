@@ -14,7 +14,7 @@ class ResourcePool:
 
     A resource pool is analogous to a machine on which we can run containers.
     """
-    def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second, **kwargs):
+    def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second, tracker, **kwargs):
         self.pool_id = pool_id
         self.max_cpu_pool = cpu_pool
         self.max_ram_pool = ram_pool
@@ -22,17 +22,18 @@ class ResourcePool:
         self.avail_ram_pool = ram_pool
         self.ticks_per_second = ticks_per_second
         self.tick_length_secs = 1.0 / ticks_per_second
+        self.tracker = tracker  # Shared dependency tracker
 
         # List of actively running and suspended containers
-        self.active_containers: List[Container] = [] 
-        self.suspending_containers: List[Container] = [] 
-        self.suspended_containers: List[Container] = [] 
+        self.active_containers: List[Container] = []
+        self.suspending_containers: List[Container] = []
+        self.suspended_containers: List[Container] = []
 
 
         # STATS
         self.num_completed = 0
-        self.container_tick_times = [] 
-        self.cost = 0 # add force_run logic here 
+        self.container_tick_times = []
+        self.cost = 0 # add force_run logic here
         self.i = 0
         self.outfile_name = f"pool_{self.pool_id}_utility.csv"
         self.outfile = open(self.outfile_name, 'w')
@@ -93,9 +94,28 @@ class ResourcePool:
                 self.suspending_containers.append(container)
                 self.active_containers.remove(container)
         
+        results = []
         if len(assignments) > 0:
             self.verify_valid_assignment(assignments)
             for a in assignments:
+                # Validate operator dependencies
+                error = self.tracker.verify_assignment_dependencies(a)
+                if error:
+                    # Create failed ExecutionResult without creating container
+                    result = ExecutionResult(
+                        ops=a.ops,
+                        cpu=a.cpu,
+                        ram=a.ram,
+                        priority=a.priority,
+                        pool_id=self.pool_id,
+                        container_id=None,
+                        error=error
+                    )
+                    results.append(result)
+                    logger.error(f"Assignment validation failed: {error}")
+                    continue
+
+                # Create container only if validation passes
                 container = Container(ram=a.ram, cpu=a.cpu, ops=a.ops,
                                       prty=a.priority, pool_id=self.pool_id,
                                       ticks_per_second=self.ticks_per_second)
@@ -117,7 +137,6 @@ class ResourcePool:
             self.suspended_containers.append(c)
 
         to_remove = []
-        results = []
         for c in self.active_containers:
             c.tick()
             if c.is_completed():
@@ -136,6 +155,8 @@ class ResourcePool:
                 # Track successful completions
                 if c.error is None:
                     self.num_completed += 1
+                    # Mark operators as succeeded in the shared dependency tracker
+                    self.tracker.mark_operators_success(c.operators)
         for c in to_remove:
             self.active_containers.remove(c)
 
