@@ -27,18 +27,20 @@ class DependencyTracker:
         Returns:
             None if dependencies are satisfied, error message string if not
         """
-        # Get or create tracker for this pipeline
-        first_op = assignment.ops[0]  # At least one operator exists
-        tracker = self.get_or_create_tracker(first_op.pipeline)
-
         # Validate all operators in the assignment
         for op in assignment.ops:
-            if not tracker.all_parents_ready(op, assignment.ops):
+            tracker = self.get_or_create_tracker(op.pipeline)
+            if not tracker.all_dependencies_satisfied(op, assignment.ops):
                 return f"Invalid assignment: operator {op.id} has incomplete parent dependencies"
         return None
 
     def mark_operators_success(self, ops: List):
-        """Mark a list of operators as successfully completed."""
+        """Mark a list of operators as successfully completed and clean up completed pipelines."""
         for op in ops:
-            tracker = self.dependency_trackers[op.pipeline.pipeline_id]
+            pipeline_id = op.pipeline.pipeline_id
+            tracker = self.dependency_trackers[pipeline_id]
             tracker.mark_success(op)
+
+            # Clean up tracker if all nodes in pipeline are complete
+            if tracker.all_nodes_complete():
+                del self.dependency_trackers[pipeline_id]
