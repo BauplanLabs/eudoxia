@@ -85,3 +85,68 @@ def test_resource_pool_basic():
     oom_result = results_by_pipeline["oom_pipeline"]
     assert not success_result.failed(), "success_pipeline should not have failed"
     assert oom_result.failed(), "oom_pipeline should have failed"
+
+
+def test_resource_pool_dependencies():
+    """Test that ResourcePool rejects operators assigned out of order"""
+    tracker = DependencyTracker()
+    pool = ResourcePool(
+        pool_id=0,
+        cpu_pool=10,
+        ram_pool=100,
+        ticks_per_second=10,
+        tracker=tracker
+    )
+
+    # Create pipeline with A -> B
+    pipeline = Pipeline(pipeline_id="dep_test", priority=Priority.BATCH_PIPELINE)
+    op_a = Operator()
+    op_b = Operator()
+
+    op_a.add_segment(Segment(baseline_cpu_seconds=0.1, cpu_scaling="const", memory_gb=5))
+    op_b.add_segment(Segment(baseline_cpu_seconds=0.1, cpu_scaling="const", memory_gb=5))
+
+    pipeline.add_operator(op_a)
+    pipeline.add_operator(op_b, [op_a])
+
+    # Try to assign B before A completes (should fail)
+    assignment_b = Assignment(
+        ops=[op_b],
+        cpu=2,
+        ram=10,
+        priority=Priority.BATCH_PIPELINE,
+        pool_id=0,
+        pipeline_id="dep_test"
+    )
+
+    results = pool.run_one_tick([], [assignment_b])
+    assert len(results) == 1
+    assert results[0].failed()
+    assert "incomplete parent dependencies" in results[0].error
+
+
+def test_dependency_tracker():
+    """Test DependencyTracker correctly validates assignments"""
+    tracker = DependencyTracker()
+
+    # Create pipeline with A -> B
+    pipeline = Pipeline(pipeline_id="test_pipeline", priority=Priority.BATCH_PIPELINE)
+    op_a = Operator()
+    op_b = Operator()
+
+    pipeline.add_operator(op_a)
+    pipeline.add_operator(op_b, [op_a])
+
+    # Try to assign B before A completes (should fail)
+    assignment_b = Assignment(
+        ops=[op_b],
+        cpu=1,
+        ram=10,
+        priority=Priority.BATCH_PIPELINE,
+        pool_id=0,
+        pipeline_id="test_pipeline"
+    )
+
+    error = tracker.verify_assignment_dependencies(assignment_b)
+    assert error is not None
+    assert "incomplete parent dependencies" in error
