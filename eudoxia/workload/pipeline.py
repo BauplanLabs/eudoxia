@@ -2,6 +2,7 @@ from typing import List, Optional
 import numpy as np
 from eudoxia.utils import EudoxiaException, DISK_SCAN_GB_SEC, Priority
 from eudoxia.utils.dag import Node, DAG
+from eudoxia.workload.runtime_status import PipelineRuntimeStatus
 
 class ScalingFuncs:
     """
@@ -129,7 +130,7 @@ class Segment:
 
 
 class Operator(Node):
-    """ 
+    """
     Operator is an encapsulation of many functions or a whole SQL query. Broader
     nodes in the big picture DAG. This is represented as a list of Segments
     """
@@ -141,22 +142,50 @@ class Operator(Node):
     def add_segment(self, segment: Segment):
         """Add a segment to this operator"""
         self.values.append(segment)
-    
+
     def get_segments(self) -> List[Segment]:
         """Get all segments in this operator"""
         return self.values
 
+    def transition(self, new_state, **kwargs):
+        """
+        Transition this operator to a new state.
+
+        Convenience method that delegates to pipeline.runtime_status().transition()
+
+        Args:
+            new_state: The new OperatorState to transition to
+            **kwargs: Additional arguments for the transition (e.g., container_id, error)
+        """
+        self.pipeline.runtime_status().transition(self, new_state, **kwargs)
+
 
 class Pipeline(Node):
-    """ 
+    """
     Pipeline is the top-level interface that arrives to the scheduler. This is a
     Tree of Operators.
+
+    All fields are immutable except for _runtime_status, which tracks mutable execution state.
     """
     def __init__(self, pipeline_id: str, priority: Priority):
         super().__init__()
         self.pipeline_id: str = pipeline_id
         self.priority: Priority = priority
         self.values: DAG[Operator] = DAG()
+
+        # MUTABLE: Execution state tracking (lazy-initialized via runtime_status() method)
+        self._runtime_status: Optional['PipelineRuntimeStatus'] = None
+
+    def runtime_status(self):
+        """
+        Get or create the runtime status for this pipeline.
+
+        Returns:
+            PipelineRuntimeStatus: The runtime status tracking object
+        """
+        if self._runtime_status is None:
+            self._runtime_status = PipelineRuntimeStatus(self)
+        return self._runtime_status
 
     def add_operator(self, operator: 'Operator', parents=None):
         """Add an operator to this pipeline and set the back reference"""

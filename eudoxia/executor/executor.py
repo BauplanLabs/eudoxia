@@ -2,7 +2,6 @@ import logging
 from typing import List
 from .assignment import Suspend, Assignment, ExecutionResult
 from .resource_pool import ResourcePool
-from .tracker import DependencyTracker
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +23,6 @@ class Executor:
         self.ticks_per_second = ticks_per_second
         self.tick_length_secs = 1.0 / ticks_per_second
 
-        # Create shared dependency tracker for all pools
-        dependency_tracker = DependencyTracker()
-
         # computation for dividing ram, cpu among diff pools
         cpu_per_pool, cpu_remainder = divmod(self.max_cpus, self.num_pools)
         ram_per_pool, ram_remainder = divmod(self.max_ram, self.num_pools)
@@ -37,8 +33,7 @@ class Executor:
             cpu_pool_i = cpu_per_pool + (1 if i < cpu_remainder else 0)
             ram_pool_i = ram_per_pool + (1 if i < ram_remainder else 0)
             new_pool = ResourcePool(pool_id=i, cpu_pool=cpu_pool_i, ram_pool=ram_pool_i,
-                                   ticks_per_second=self.ticks_per_second,
-                                   tracker=dependency_tracker, **kwargs)
+                                   ticks_per_second=self.ticks_per_second, **kwargs)
             self.pools.append(new_pool)
 
     def get_pool_id_with_max_avail_ram(self) -> int:

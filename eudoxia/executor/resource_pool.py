@@ -2,6 +2,7 @@ import logging
 from typing import List
 from .assignment import Assignment, Suspend, ExecutionResult
 from .container import Container
+from eudoxia.workload import OperatorState
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ class ResourcePool:
 
     A resource pool is analogous to a machine on which we can run containers.
     """
-    def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second, tracker, multi_operator_containers=True, **kwargs):
+    def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second, multi_operator_containers=True, **kwargs):
         self.pool_id = pool_id
         self.max_cpu_pool = cpu_pool
         self.max_ram_pool = ram_pool
@@ -22,7 +23,6 @@ class ResourcePool:
         self.avail_ram_pool = ram_pool
         self.ticks_per_second = ticks_per_second
         self.tick_length_secs = 1.0 / ticks_per_second
-        self.tracker = tracker  # Shared dependency tracker
         self.multi_operator_containers = multi_operator_containers
 
         # List of actively running and suspended containers
@@ -92,6 +92,9 @@ class ResourcePool:
             for s in suspensions:
                 container = self.get_container_by_id(s.container_id)
                 container.suspend_container()
+                # Transition operators to SUSPENDING state
+                for op in container.operators:
+                    op.transition(OperatorState.SUSPENDING)
                 self.suspending_containers.append(container)
                 self.active_containers.remove(container)
         
@@ -114,9 +117,15 @@ class ResourcePool:
                     logger.error(f"Assignment validation failed: multiple operators not allowed")
                     continue
 
-                # Validate operator dependencies
-                error = self.tracker.verify_assignment_dependencies(a)
-                if error:
+                # Validate operator dependencies using runtime_status
+                validation_error = None
+                for op in a.ops:
+                    can_schedule, error_msg = op.pipeline.runtime_status().can_schedule(op)
+                    if not can_schedule:
+                        validation_error = error_msg
+                        break
+
+                if validation_error:
                     # Create failed ExecutionResult without creating container
                     result = ExecutionResult(
                         ops=a.ops,
@@ -125,16 +134,21 @@ class ResourcePool:
                         priority=a.priority,
                         pool_id=self.pool_id,
                         container_id=None,
-                        error=error
+                        error="dependency"
                     )
                     results.append(result)
-                    logger.error(f"Assignment validation failed: operator has incomplete parent dependencies")
+                    logger.error(f"Assignment validation failed: {validation_error}")
+                    # Don't transition to FAILED - validation failure just rejects assignment
+                    # Operators stay in their current state for potential retry
                     continue
 
                 # Create container only if validation passes
                 container = Container(ram=a.ram, cpu=a.cpu, ops=a.ops,
                                       prty=a.priority, pool_id=self.pool_id,
                                       ticks_per_second=self.ticks_per_second)
+                # Transition operators to RUNNING state
+                for op in a.ops:
+                    op.transition(OperatorState.RUNNING, container_id=container.container_id)
                 self.avail_cpu_pool -= a.cpu
                 self.avail_ram_pool -= a.ram
                 self.active_containers.append(container)
@@ -145,6 +159,9 @@ class ResourcePool:
         for c in self.suspending_containers:
             c.suspend_container_tick()
             if c.is_suspended():
+                # Transition operators back to PENDING (ready for re-assignment)
+                for op in c.operators:
+                    op.transition(OperatorState.PENDING)
                 self.avail_cpu_pool += c.cpu
                 self.avail_ram_pool += c.ram
                 to_remove.append(c)
@@ -161,6 +178,17 @@ class ResourcePool:
                 self.avail_ram_pool += c.ram
                 to_remove.append(c)
 
+                # Transition operators based on success or failure
+                if c.error is None:
+                    # Success - transition to COMPLETED
+                    for op in c.operators:
+                        op.transition(OperatorState.COMPLETED)
+                    self.num_completed += 1
+                else:
+                    # Failure - transition to FAILED
+                    for op in c.operators:
+                        op.transition(OperatorState.FAILED, error=c.error)
+
                 # Create an ExecutionResult for every completed container
                 result = ExecutionResult(ops=c.operators, cpu=c.cpu, ram=c.ram,
                                         priority=c.priority, pool_id=c.pool_id,
@@ -168,11 +196,6 @@ class ResourcePool:
                 logger.info(result)
                 results.append(result)
 
-                # Track successful completions
-                if c.error is None:
-                    self.num_completed += 1
-                    # Mark operators as succeeded in the shared dependency tracker
-                    self.tracker.mark_operators_success(c.operators)
         for c in to_remove:
             self.active_containers.remove(c)
 

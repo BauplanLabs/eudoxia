@@ -1,8 +1,8 @@
 import pytest
 from eudoxia.executor.resource_pool import ResourcePool
-from eudoxia.executor.tracker import DependencyTracker
 from eudoxia.executor.assignment import Assignment, Suspend
 from eudoxia.workload.pipeline import Segment, Operator, Pipeline
+from eudoxia.workload import OperatorState
 from eudoxia.utils import Priority
 
 
@@ -17,7 +17,6 @@ def test_resource_pool_basic():
         cpu_pool=10,
         ram_pool=100,
         ticks_per_second=10,
-        tracker=DependencyTracker(),
         multi_operator_containers=True
     )
 
@@ -90,13 +89,11 @@ def test_resource_pool_basic():
 
 def test_resource_pool_dependencies():
     """Test that ResourcePool rejects operators assigned out of order"""
-    tracker = DependencyTracker()
     pool = ResourcePool(
         pool_id=0,
         cpu_pool=10,
         ram_pool=100,
         ticks_per_second=10,
-        tracker=tracker,
         multi_operator_containers=True
     )
 
@@ -127,10 +124,8 @@ def test_resource_pool_dependencies():
     assert results[0].error == "dependency"
 
 
-def test_dependency_tracker():
-    """Test DependencyTracker correctly validates assignments"""
-    tracker = DependencyTracker()
-
+def test_runtime_status_dependencies():
+    """Test PipelineRuntimeStatus correctly validates operator scheduling"""
     # Create pipeline with A -> B
     pipeline = Pipeline(pipeline_id="test_pipeline", priority=Priority.BATCH_PIPELINE)
     op_a = Operator()
@@ -139,45 +134,42 @@ def test_dependency_tracker():
     pipeline.add_operator(op_a)
     pipeline.add_operator(op_b, [op_a])
 
-    # Try to assign B before A completes (should fail)
-    assignment_b = Assignment(
-        ops=[op_b],
-        cpu=1,
-        ram=10,
-        priority=Priority.BATCH_PIPELINE,
-        pool_id=0,
-        pipeline_id="test_pipeline"
-    )
+    # Initialize runtime status
+    status = pipeline.runtime_status()
 
-    error = tracker.verify_assignment_dependencies(assignment_b)
-    assert error == "dependency"
+    # Try to schedule B before A completes (should fail)
+    can_schedule, error = status.can_schedule(op_b)
+    assert not can_schedule
+    assert "Dependencies not satisfied" in error
+
+    # A should be schedulable
+    can_schedule, error = status.can_schedule(op_a)
+    assert can_schedule
+    assert error is None
 
 
-def test_tracker_cleanup():
-    """Test that DependencyTracker cleans up completed pipelines"""
-    tracker = DependencyTracker()
-
+def test_runtime_status_state_transitions():
+    """Test PipelineRuntimeStatus state tracking through operator lifecycle"""
     # Create simple pipeline with one operator
-    pipeline = Pipeline(pipeline_id="cleanup_test", priority=Priority.BATCH_PIPELINE)
+    pipeline = Pipeline(pipeline_id="state_test", priority=Priority.BATCH_PIPELINE)
     op = Operator()
     pipeline.add_operator(op)
 
-    # Create tracker by validating an assignment
-    assignment = Assignment(
-        ops=[op],
-        cpu=1,
-        ram=10,
-        priority=Priority.BATCH_PIPELINE,
-        pool_id=0,
-        pipeline_id="cleanup_test"
-    )
-    tracker.verify_assignment_dependencies(assignment)
+    status = pipeline.runtime_status()
 
-    # Tracker should exist
-    assert "cleanup_test" in tracker.dependency_trackers
+    # Initially PENDING
+    assert status.operator_states[op] == OperatorState.PENDING
 
-    # Mark operator as complete
-    tracker.mark_operators_success([op])
+    # Transition to RUNNING
+    op.transition(OperatorState.RUNNING, container_id="c1")
+    assert status.operator_states[op] == OperatorState.RUNNING
+    assert status.operator_containers[op] == "c1"
 
-    # Tracker should be cleaned up
-    assert "cleanup_test" not in tracker.dependency_trackers
+    # Transition to COMPLETED
+    op.transition(OperatorState.COMPLETED)
+    assert status.operator_states[op] == OperatorState.COMPLETED
+    assert op not in status.operator_containers
+
+    # Pipeline should be complete
+    assert status.is_pipeline_complete()
+    assert status.is_pipeline_successful()
