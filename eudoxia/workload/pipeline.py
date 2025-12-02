@@ -147,17 +147,9 @@ class Operator(Node):
         """Get all segments in this operator"""
         return self.values
 
-    def transition(self, new_state, **kwargs):
-        """
-        Transition this operator to a new state.
-
-        Convenience method that delegates to pipeline.runtime_status().transition()
-
-        Args:
-            new_state: The new OperatorState to transition to
-            **kwargs: Additional arguments for the transition (e.g., container_id, error)
-        """
-        self.pipeline.runtime_status().transition(self, new_state, **kwargs)
+    def transition(self, new_state):
+        """Transition this operator to a new state."""
+        self.pipeline.runtime_status().transition(self, new_state)
 
 
 class Pipeline(Node):

@@ -148,7 +148,7 @@ class ResourcePool:
                                       ticks_per_second=self.ticks_per_second)
                 # Transition operators to RUNNING state
                 for op in a.ops:
-                    op.transition(OperatorState.RUNNING, container_id=container.container_id)
+                    op.transition(OperatorState.RUNNING)
                 self.avail_cpu_pool -= a.cpu
                 self.avail_ram_pool -= a.ram
                 self.active_containers.append(container)
@@ -187,7 +187,7 @@ class ResourcePool:
                 else:
                     # Failure - transition to FAILED
                     for op in c.operators:
-                        op.transition(OperatorState.FAILED, error=c.error)
+                        op.transition(OperatorState.FAILED)
 
                 # Create an ExecutionResult for every completed container
                 result = ExecutionResult(ops=c.operators, cpu=c.cpu, ram=c.ram,
