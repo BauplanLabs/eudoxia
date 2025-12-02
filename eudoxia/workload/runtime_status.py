@@ -1,6 +1,5 @@
 from enum import Enum
 from typing import Dict, List, Optional
-from eudoxia.utils.dag import DAGDependencyTracker
 
 
 class OperatorState(Enum):
@@ -44,10 +43,8 @@ class PipelineRuntimeStatus:
     """
 
     def __init__(self, pipeline: 'Pipeline'):
-        self.pipeline_id = pipeline.pipeline_id
         self.pipeline = pipeline
         self.operator_states: Dict['Operator', OperatorState] = {}
-        self.dag_dependency_tracker = DAGDependencyTracker(pipeline.values)
         self.arrival_tick: Optional[int] = None
 
         for operator in pipeline.values:
@@ -57,6 +54,25 @@ class PipelineRuntimeStatus:
         """Record the tick at which this pipeline arrived."""
         self.arrival_tick = tick
 
+    def check_transition(self, operator: 'Operator', new_state: OperatorState) -> tuple[bool, Optional[str]]:
+        """
+        Check if a state transition is valid.
+
+        Returns:
+            Tuple of (can_transition, error_reason)
+        """
+        current_state = self.operator_states[operator]
+
+        if new_state not in VALID_TRANSITIONS[current_state]:
+            return (False, f"Cannot transition from {current_state.value} to {new_state.value}")
+
+        if new_state == OperatorState.RUNNING:
+            for parent in operator.parents:
+                if self.operator_states[parent] != OperatorState.COMPLETED:
+                    return (False, "Dependencies not satisfied")
+
+        return (True, None)
+
     def transition(self, operator: 'Operator', new_state: OperatorState):
         """
         Transition an operator to a new state.
@@ -64,47 +80,13 @@ class PipelineRuntimeStatus:
         Raises:
             AssertionError: If the transition is invalid
         """
-        current_state = self.operator_states[operator]
-        valid_next_states = VALID_TRANSITIONS[current_state]
-        assert new_state in valid_next_states, \
-            f"Invalid transition: {current_state.value} -> {new_state.value}. " \
-            f"Valid: {[s.value for s in valid_next_states]}"
-
+        can_transition, error = self.check_transition(operator, new_state)
+        assert can_transition, error
         self.operator_states[operator] = new_state
 
-        if new_state == OperatorState.COMPLETED:
-            self.dag_dependency_tracker.mark_success(operator)
-
     def can_schedule(self, operator: 'Operator') -> tuple[bool, Optional[str]]:
-        """
-        Check if an operator can be scheduled.
-
-        Returns:
-            Tuple of (can_schedule, error_reason)
-        """
-        state = self.operator_states[operator]
-
-        if state == OperatorState.RUNNING:
-            return (False, "Operator already running")
-
-        if state == OperatorState.SUSPENDING:
-            return (False, "Operator suspending")
-
-        if state == OperatorState.COMPLETED:
-            return (False, "Operator already completed")
-
-        # FAILED operators can be scheduled (for retry)
-        if not self.dag_dependency_tracker.all_dependencies_satisfied(operator):
-            return (False, "Dependencies not satisfied")
-
-        return (True, None)
-
-    def is_pipeline_complete(self) -> bool:
-        """Check if all operators are in COMPLETED or FAILED state."""
-        for state in self.operator_states.values():
-            if state not in (OperatorState.COMPLETED, OperatorState.FAILED):
-                return False
-        return True
+        """Check if an operator can be scheduled (i.e., transitioned to RUNNING)."""
+        return self.check_transition(operator, OperatorState.RUNNING)
 
     def is_pipeline_successful(self) -> bool:
         """Check if all operators completed successfully."""
