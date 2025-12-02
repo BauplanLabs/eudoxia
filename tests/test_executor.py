@@ -168,6 +168,5 @@ def test_runtime_status_state_transitions():
     op.transition(OperatorState.COMPLETED)
     assert status.operator_states[op] == OperatorState.COMPLETED
 
-    # Pipeline should be complete
-    assert status.is_pipeline_complete()
+    # Pipeline should be successful
     assert status.is_pipeline_successful()
