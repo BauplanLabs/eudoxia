@@ -138,7 +138,6 @@ class ResourcePool:
                 self.avail_cpu_pool -= a.cpu
                 self.avail_ram_pool -= a.ram
                 self.active_containers.append(container)
-                self.container_tick_times.append(container.num_ticks)
                 logger.info(f"start container {container}")
 
         to_remove = []
@@ -167,6 +166,9 @@ class ResourcePool:
                                         container_id=c.container_id, error=c.error)
                 logger.info(result)
                 results.append(result)
+
+                # Record actual ticks executed for stats
+                self.container_tick_times.append(c.ticks_elapsed())
 
                 # Track successful completions
                 if c.error is None:
