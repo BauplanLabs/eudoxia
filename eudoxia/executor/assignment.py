@@ -60,6 +60,8 @@ class Assignment:
         self.pool_id = pool_id
         self.pipeline_id = pipeline_id
         self.container_id = container_id
+        # TODO: Resume cost (read from disk) is not yet modeled.
+        # Currently suspension writes to disk but resume is instant.
         self.is_resume = is_resume
         self.force_run = force_run
 

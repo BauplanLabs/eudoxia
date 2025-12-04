@@ -183,6 +183,7 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         new_pipelines: List[Pipeline] = workload.run_one_tick()
         for p in new_pipelines:
             logger.info(f"Pipeline arrived with Priority {p.priority} and {len(p.values)} op(s)")
+            p.runtime_status().record_arrival(tick_number)
         suspensions, assignments = scheduler.run_one_tick(executor_results, new_pipelines)
         executor_results = executor.run_one_tick(suspensions, assignments)
 

@@ -1,5 +1,5 @@
 import pytest
-from eudoxia.utils.dag import Node, DAG, DAGDependencyTracker
+from eudoxia.utils.dag import Node, DAG
 
 
 def test_dag_add_node():
@@ -125,54 +125,3 @@ def test_dag_multiple_parents():
     # Both B and C must come before D
     assert b_pos < d_pos
     assert c_pos < d_pos
-
-
-def test_dag_dependency_tracker():
-    """Test DAGDependencyTracker for tracking node completion state"""
-    dag = DAG()
-
-    # Create a simple DAG: A -> B -> C
-    node_a = Node()
-    node_b = Node()
-    node_c = Node()
-
-    dag.add_node(node_a)
-    dag.add_node(node_b, [node_a])
-    dag.add_node(node_c, [node_b])
-
-    # Create tracker
-    tracker = DAGDependencyTracker(dag)
-
-    # Initially, all nodes should be not succeeded
-    assert tracker.succeeded[node_a] == False
-    assert tracker.succeeded[node_b] == False
-    assert tracker.succeeded[node_c] == False
-
-    # Node A (no parents) should be ready
-    assert tracker.all_dependencies_satisfied(node_a) == True
-
-    # Node B (parent A not complete) should not be ready
-    assert tracker.all_dependencies_satisfied(node_b) == False
-
-    # Node B should be ready if A is in additional_nodes
-    assert tracker.all_dependencies_satisfied(node_b, [node_a]) == True
-
-    # Mark A as succeeded
-    tracker.mark_success(node_a)
-    assert tracker.succeeded[node_a] == True
-
-    # Now B should be ready
-    assert tracker.all_dependencies_satisfied(node_b) == True
-
-    # C still not ready
-    assert tracker.all_dependencies_satisfied(node_c) == False
-
-    # Mark B as succeeded
-    tracker.mark_success(node_b)
-
-    # Now C should be ready
-    assert tracker.all_dependencies_satisfied(node_c) == True
-
-    # Test that marking twice fails
-    with pytest.raises(AssertionError):
-        tracker.mark_success(node_a)

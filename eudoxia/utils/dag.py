@@ -1,5 +1,5 @@
 import uuid
-from typing import Generic, TypeVar, Optional, List, Dict
+from typing import Optional, List
 '''
 This file implements a general DAG (Directed Acyclic Graph) data structure. Each DAG is composed of
 Nodes, so all DAG node types must subclass Node in order to ensure certain
@@ -72,41 +72,3 @@ class DAGIterator[T: Node]:
                 self.queue.append(child)
 
         return curr
-
-
-class DAGDependencyTracker:
-    """
-    Tracks completion state of nodes in a DAG for execution dependency checking.
-    Keeps Nodes immutable by storing execution state externally.
-    """
-    def __init__(self, dag: DAG):
-        self.dag = dag
-        self.succeeded: Dict[Node, bool] = {node: False for node in dag}
-
-    def mark_success(self, node: Node):
-        """Mark a node as successfully completed."""
-        assert not self.succeeded[node], f"Node {node.id} already marked as succeeded"
-        self.succeeded[node] = True
-
-    def all_nodes_complete(self) -> bool:
-        """Check if all nodes in the DAG have been marked as succeeded."""
-        return all(self.succeeded.values())
-
-    def all_dependencies_satisfied(self, node: Node, additional_nodes: List[Node] = []) -> bool:
-        """
-        Check if all dependencies are satisfied for this node to execute.
-        A dependency is satisfied if the parent has succeeded OR is in the additional_nodes list.
-
-        Args:
-            node: The node to check dependencies for
-            additional_nodes: Optional list of nodes that are being assigned together
-                             (parents in this list are considered satisfied even if not succeeded)
-
-        Returns:
-            True if all dependencies are satisfied, False otherwise
-        """
-        additional_set = set(additional_nodes)
-        for parent in node.parents:
-            if not self.succeeded[parent] and parent not in additional_set:
-                return False
-        return True

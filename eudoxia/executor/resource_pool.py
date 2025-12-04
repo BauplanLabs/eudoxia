@@ -14,7 +14,7 @@ class ResourcePool:
 
     A resource pool is analogous to a machine on which we can run containers.
     """
-    def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second, tracker, multi_operator_containers=True, **kwargs):
+    def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second, multi_operator_containers=True, **kwargs):
         self.pool_id = pool_id
         self.max_cpu_pool = cpu_pool
         self.max_ram_pool = ram_pool
@@ -22,7 +22,6 @@ class ResourcePool:
         self.avail_ram_pool = ram_pool
         self.ticks_per_second = ticks_per_second
         self.tick_length_secs = 1.0 / ticks_per_second
-        self.tracker = tracker  # Shared dependency tracker
         self.multi_operator_containers = multi_operator_containers
 
         # List of actively running and suspended containers
@@ -114,24 +113,7 @@ class ResourcePool:
                     logger.error(f"Assignment validation failed: multiple operators not allowed")
                     continue
 
-                # Validate operator dependencies
-                error = self.tracker.verify_assignment_dependencies(a)
-                if error:
-                    # Create failed ExecutionResult without creating container
-                    result = ExecutionResult(
-                        ops=a.ops,
-                        cpu=a.cpu,
-                        ram=a.ram,
-                        priority=a.priority,
-                        pool_id=self.pool_id,
-                        container_id=None,
-                        error=error
-                    )
-                    results.append(result)
-                    logger.error(f"Assignment validation failed: operator has incomplete parent dependencies")
-                    continue
-
-                # Create container only if validation passes
+                # Create container (transitions ops to ASSIGNED, then RUNNING as they execute)
                 container = Container(ram=a.ram, cpu=a.cpu, ops=a.ops,
                                       prty=a.priority, pool_id=self.pool_id,
                                       ticks_per_second=self.ticks_per_second)
@@ -155,10 +137,12 @@ class ResourcePool:
         for c in self.active_containers:
             c.tick()
             if c.is_completed():
-                # self.status_report()
                 self.avail_cpu_pool += c.cpu
                 self.avail_ram_pool += c.ram
                 to_remove.append(c)
+
+                if c.error is None:
+                    self.num_completed += 1
 
                 # Create an ExecutionResult for every completed container
                 result = ExecutionResult(ops=c.operators, cpu=c.cpu, ram=c.ram,
@@ -167,14 +151,11 @@ class ResourcePool:
                 logger.info(result)
                 results.append(result)
 
-                # Record actual ticks executed for stats
+                # TODO: if we're computing p99 latency on this, is it
+                # better to include all containers, or only those that
+                # ran successfully?
                 self.container_tick_times.append(c.ticks_elapsed())
 
-                # Track successful completions
-                if c.error is None:
-                    self.num_completed += 1
-                    # Mark operators as succeeded in the shared dependency tracker
-                    self.tracker.mark_operators_success(c.operators)
         for c in to_remove:
             self.active_containers.remove(c)
 
