@@ -195,7 +195,9 @@ class ResourcePool:
                 logger.info(result)
                 results.append(result)
 
-                # Record actual ticks executed for stats
+                # TODO: if we're computing p99 latency on this, is it
+                # better to include all containers, or only those that
+                # ran successfully?
                 self.container_tick_times.append(c.ticks_elapsed())
 
         for c in to_remove:
