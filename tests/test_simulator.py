@@ -45,11 +45,10 @@ def test_run_simulator_basic(scheduler_algo):
     pipelines = []
     for i in range(3):
         pipeline = Pipeline(f"test{i+1}", Priority.BATCH_PIPELINE)
-        op = Operator()
+        op = pipeline.new_operator()
         # CPU-only segment (no I/O): storage_read_gb=0 means no I/O time
         seg = Segment(baseline_cpu_seconds=3, cpu_scaling="const", storage_read_gb=0)
         op.add_segment(seg)
-        pipeline.add_operator(op)
         pipelines.append(pipeline)
 
     workload = MockWorkload({
@@ -94,11 +93,10 @@ def test_tick_length(ticks_per_second):
     pipelines = []
     for i in range(10):
         pipeline = Pipeline(f"cpu_test{i+1}", Priority.BATCH_PIPELINE)
-        op = Operator()
+        op = pipeline.new_operator()
         # CPU-only segment: 0 IO, 1 second CPU time
         seg = Segment(baseline_cpu_seconds=1.0, cpu_scaling="const", storage_read_gb=0)
         op.add_segment(seg)
-        pipeline.add_operator(op)
         pipelines.append(pipeline)
 
     # All pipelines arrive at 0 seconds
@@ -133,10 +131,9 @@ def test_oom_retry(scheduler_algo):
     # Priority schedulers will retry with doubled RAM until it fits (and is < 50% of pool)
     # Note: priority-pool splits resources between 2 pools, so each pool has 50GB
     pipeline = Pipeline("oom_test", Priority.BATCH_PIPELINE)
-    op = Operator()
+    op = pipeline.new_operator()
     seg = Segment(baseline_cpu_seconds=1.0, cpu_scaling="const", storage_read_gb=20)
     op.add_segment(seg)
-    pipeline.add_operator(op)
 
     workload = MockWorkload({0.0: [pipeline]}, params['ticks_per_second'])
 

@@ -157,24 +157,24 @@ class WorkloadGenerator(Workload):
             pipeline_id = f"g{self.pipeline_counter}"
             p = Pipeline(pipeline_id, Priority(priority))
             if priority == Priority.QUERY.value:
-                op = Operator()
+                op = p.new_operator()
                 seg = self.generate_query_segment()
                 op.add_segment(seg)
 
                 logger.info(f"Pipeline {pipeline_id} generated with Priority {Priority(priority)} and 1 op")
-                p.add_operator(op)
             else:
-                ops = []
                 # TODO: ignoring parallel factor
                 curr_num_ops = int(self.rng.normal(self.num_operators,
-                                                 self.num_operators/4)) 
+                                                 self.num_operators/4))
 
                 # Normal distribution is continuous and nonzero chance value less
                 # than 1 is chosen; this ensures num operators is always at least 1
-                if curr_num_ops < 1: 
+                if curr_num_ops < 1:
                     curr_num_ops = 1
+
+                prev_op = None
                 for i in range(curr_num_ops):
-                    op = Operator()
+                    op = p.new_operator([prev_op] if prev_op else None)
                     # Segments are 1:1 with operators in current execution
                     curr_num_segs = 1
                     prev_seg = None
@@ -188,18 +188,9 @@ class WorkloadGenerator(Workload):
                             seg = self.generate_segment_not_heavy_io()
                             op.add_segment(seg)
                         prev_seg = seg
-                    ops.append(op)
+                    prev_op = op
 
                 logger.info(f"Pipeline {pipeline_id} generated with Priority {Priority(priority)} and {curr_num_ops} ops")
-
-                # Pipeline is all operators in a linked list. First call has only
-                # one argument as it has no parent. all others have parent that is
-                # the previously generated operator in the list
-                for i in range(len(ops)):
-                    if i == 0:
-                        p.add_operator(ops[i])
-                    else:
-                        p.add_operator(ops[i], [ops[i-1]])
             pipelines.append(p)
         return pipelines
 

@@ -134,10 +134,10 @@ class Operator(Node):
     Operator is an encapsulation of many functions or a whole SQL query. Broader
     nodes in the big picture DAG. This is represented as a list of Segments
     """
-    def __init__(self):
+    def __init__(self, pipeline: 'Pipeline'):
         super().__init__()
         self.values: List[Segment] = []
-        self.pipeline: Optional[Pipeline] = None  # Back reference to the pipeline to which this operator belongs
+        self.pipeline: Pipeline = pipeline
 
     def add_segment(self, segment: Segment):
         """Add a segment to this operator"""
@@ -150,6 +150,10 @@ class Operator(Node):
     def transition(self, new_state):
         """Transition this operator to a new state."""
         self.pipeline.runtime_status().transition(self, new_state)
+
+    def state(self) -> 'OperatorState':
+        """Get the current state of this operator."""
+        return self.pipeline.runtime_status().operator_states[self]
 
 
 class Pipeline(Node):
@@ -179,9 +183,9 @@ class Pipeline(Node):
             self._runtime_status = PipelineRuntimeStatus(self)
         return self._runtime_status
 
-    def add_operator(self, operator: 'Operator', parents=None):
-        """Add an operator to this pipeline and set the back reference"""
-        assert operator.pipeline == None # cannot already belong to another pipeline
-        operator.pipeline = self
+    def new_operator(self, parents=None) -> Operator:
+        """Create a new operator belonging to this pipeline and add it to the DAG"""
+        operator = Operator(self)
         self.values.add_node(operator, parents)
+        return operator
 

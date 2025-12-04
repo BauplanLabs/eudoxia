@@ -12,15 +12,11 @@ def test_container_oom():
     ops = []
     prev_op = None
     for i in range(10):
-        op = Operator()
+        op = pipeline.new_operator([prev_op] if prev_op else None)
         op.add_segment(Segment(
             baseline_cpu_seconds = 10,
             memory_gb =10*(i+1),
         ))
-        if prev_op:
-            pipeline.add_operator(op, [prev_op])
-        else:
-            pipeline.add_operator(op)
         ops.append(op)
         prev_op = op
 
@@ -54,18 +50,14 @@ def test_container_oom_transitions_remaining_ops_to_failed():
     from eudoxia.workload import OperatorState
 
     pipeline = Pipeline(pipeline_id="oom_fail_test", priority=Priority.BATCH_PIPELINE)
-    op_a = Operator()
-    op_b = Operator()
-    op_c = Operator()
+    op_a = pipeline.new_operator()
+    op_b = pipeline.new_operator([op_a])
+    op_c = pipeline.new_operator([op_b])
 
     # op_b will OOM (needs 100GB); op_a should be completed by then, and op_c should be considered failed
     op_a.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=10))
     op_b.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=100))
     op_c.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=10))
-
-    pipeline.add_operator(op_a)
-    pipeline.add_operator(op_b, [op_a])
-    pipeline.add_operator(op_c, [op_b])
 
     container = Container(
         ram=50,  # Not enough for op_a
@@ -94,14 +86,13 @@ def test_container_immediate_oom():
 
     pipeline = Pipeline(pipeline_id="immediate_oom_test", priority=Priority.BATCH_PIPELINE)
     # Create a segment that needs 200GB of memory
-    op = Operator()
+    op = pipeline.new_operator()
     op.add_segment(Segment(
         baseline_cpu_seconds=1.0,
         cpu_scaling="const",
         memory_gb=200,  # Needs 200GB
         storage_read_gb=0
     ))
-    pipeline.add_operator(op)
 
     # Create container with only 50GB RAM - immediate OOM
     container = Container(
@@ -131,13 +122,12 @@ def test_container_suspension_ticks():
     """Test that suspension takes the correct number of ticks to write memory to disk"""
 
     pipeline = Pipeline(pipeline_id="suspend_test", priority=Priority.BATCH_PIPELINE)
-    op = Operator()
+    op = pipeline.new_operator()
     op.add_segment(Segment(
         baseline_cpu_seconds=1.0,
         cpu_scaling="const",
         memory_gb=10,
     ))
-    pipeline.add_operator(op)
 
     # 100 ticks per second, so tick_length = 0.01 seconds
     container = Container(
@@ -185,17 +175,16 @@ def test_container_memory_over_time():
     """
     pipeline = Pipeline(pipeline_id="memory_test", priority=Priority.BATCH_PIPELINE)
     # Op1: fixed memory
-    op1 = Operator()
+    op1 = pipeline.new_operator()
     op1.add_segment(Segment(
         baseline_cpu_seconds=1.0,
         cpu_scaling="const",
         memory_gb=10,
         storage_read_gb=0,
     ))
-    pipeline.add_operator(op1)
 
     # Op2: I/O-based memory (memory_gb=None means memory grows with I/O)
-    op2 = Operator()
+    op2 = pipeline.new_operator([op1])
     op2.add_segment(Segment(
         baseline_cpu_seconds=1.0,
         cpu_scaling="const",
@@ -208,7 +197,6 @@ def test_container_memory_over_time():
         memory_gb=None,
         storage_read_gb=20,  # 20GB read at 20GB/sec = 1 sec I/O, peak memory = 20GB
     ))
-    pipeline.add_operator(op2, [op1])
 
     container = Container(
         ram=100,
