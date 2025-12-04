@@ -20,6 +20,7 @@ VALID_TRANSITIONS: Dict[OperatorState, List[OperatorState]] = {
     OperatorState.ASSIGNED: [
         OperatorState.RUNNING,
         OperatorState.SUSPENDING,
+        OperatorState.FAILED,
     ],
     OperatorState.RUNNING: [
         OperatorState.COMPLETED,

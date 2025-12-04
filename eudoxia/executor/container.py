@@ -106,7 +106,20 @@ class Container:
                     # have we OOM'd?
                     if self._current_memory > self.ram:
                         self.error = "OOM"
-                        op.transition(OperatorState.FAILED)
+
+                        # if the current running op fails, the ops
+                        # before it are completed, and the ones after
+                        # it are assigned.
+                        #
+                        # TODO: decide when an op fails, what should
+                        # be the state of the other ops in the
+                        # container be?
+                        #
+                        # for example, does an op that was already
+                        # completed need to be retried, or was the
+                        # output checkpointed somewhere?
+                        for remaining_op in self.operators[op_idx:]:
+                            remaining_op.transition(OperatorState.FAILED)
                         self._completed = True
                         yield
                         return

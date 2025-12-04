@@ -49,6 +49,46 @@ def test_container_oom():
     assert container.error == "OOM", "Container should have OOM error after completion"
 
 
+def test_container_oom_transitions_remaining_ops_to_failed():
+    """Test that when a container OOMs, all operators (running and assigned) transition to FAILED."""
+    from eudoxia.workload import OperatorState
+
+    pipeline = Pipeline(pipeline_id="oom_fail_test", priority=Priority.BATCH_PIPELINE)
+    op_a = Operator()
+    op_b = Operator()
+    op_c = Operator()
+
+    # op_b will OOM (needs 100GB); op_a should be completed by then, and op_c should be considered failed
+    op_a.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=10))
+    op_b.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=100))
+    op_c.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=10))
+
+    pipeline.add_operator(op_a)
+    pipeline.add_operator(op_b, [op_a])
+    pipeline.add_operator(op_c, [op_b])
+
+    container = Container(
+        ram=50,  # Not enough for op_a
+        cpu=10,
+        ops=[op_a, op_b, op_c],
+        prty=Priority.BATCH_PIPELINE,
+        pool_id=0,
+        ticks_per_second=10
+    )
+
+    # Run until OOM
+    while not container.is_completed():
+        container.tick()
+
+    assert container.error == "OOM"
+
+    # All operators should be FAILED (not stuck in ASSIGNED)
+    status = pipeline.runtime_status()
+    assert status.operator_states[op_a] == OperatorState.COMPLETED
+    assert status.operator_states[op_b] == OperatorState.FAILED
+    assert status.operator_states[op_c] == OperatorState.FAILED
+
+
 def test_container_immediate_oom():
     """Test that immediate OOM (when segment needs more memory than container has) completes properly"""
 
