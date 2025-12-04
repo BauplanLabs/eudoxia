@@ -51,6 +51,7 @@ def run_command(params_file, workload=None):
     print(f"  Suspensions: {stats.suspensions}")
     print(f"  Failures: {stats.failures}")
     print(f"  Failure/error counts: {stats.failure_error_counts}")
+    print(f"  Pipeline mean latency: {stats.pipelines_all.mean_latency_seconds:.2f}s")
 
 
 def gentrace_command(params_file, output_file, force=False):

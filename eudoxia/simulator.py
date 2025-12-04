@@ -10,7 +10,7 @@ from eudoxia.scheduler import Scheduler
 from eudoxia.workload import Workload, WorkloadGenerator, Pipeline
 from eudoxia.executor.assignment import Assignment
 
-__all__ = ["run_simulator", "parse_args_with_defaults", "get_param_defaults"]
+__all__ = ["run_simulator", "parse_args_with_defaults", "get_param_defaults", "SimulatorStats", "PipelineStats"]
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,11 @@ class SimulatedTimeFormatter(logging.Formatter):
         # Format: [elapsed_time] LEVEL:logger_name: message
         return f"[{self.elapsed_seconds:6.1f}s] {record.levelname}:{record.name}: {record.getMessage()}"
 
+class PipelineStats(NamedTuple):
+    """Statistics for a category of pipelines"""
+    mean_latency_seconds: float
+
+
 class SimulatorStats(NamedTuple):
     """Statistics returned from a simulator run"""
     pipelines_created: int
@@ -38,6 +43,7 @@ class SimulatorStats(NamedTuple):
     suspensions: int
     failures: int
     failure_error_counts: int
+    pipelines_all: PipelineStats
 
 def get_param_defaults() -> Dict:
     """
@@ -175,6 +181,8 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     num_failures = 0
     failure_error_counts = defaultdict(int)
     executor_results = []
+    outstanding_pipelines: Dict[str, Pipeline] = {}
+    pipeline_latencies: List[int] = []
 
     # IMPORTANT!  This is the main simulation loop.
     for tick_number in range(max_ticks):
@@ -184,6 +192,7 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         for p in new_pipelines:
             logger.info(f"Pipeline arrived with Priority {p.priority} and {len(p.values)} op(s)")
             p.runtime_status().record_arrival(tick_number)
+            outstanding_pipelines[p.pipeline_id] = p
         suspensions, assignments = scheduler.run_one_tick(executor_results, new_pipelines)
         executor_results = executor.run_one_tick(suspensions, assignments)
 
@@ -197,10 +206,26 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         for failure in failures:
             failure_error_counts[failure.error] += 1
 
+        # Check for completed pipelines
+        if executor_results:
+            for pipeline_id in list(outstanding_pipelines.keys()):
+                pipeline = outstanding_pipelines[pipeline_id]
+                if pipeline.runtime_status().is_pipeline_successful():
+                    pipeline.runtime_status().record_finish(tick_number)
+                    pipeline_latencies.append(pipeline.runtime_status().get_latency_ticks())
+                    del outstanding_pipelines[pipeline_id]
+
     # TODO: better way to calculate work throuphput, going by num ops, etc. is
     # going to skew towards more smaller jobs
     throughput = executor.num_completed() / params['duration']
     p99 = np.percentile(executor.container_tick_times(), 99) / params["ticks_per_second"]
+
+    # Compute pipeline stats
+    if pipeline_latencies:
+        mean_latency_seconds = np.mean(pipeline_latencies) / ticks_per_second
+    else:
+        mean_latency_seconds = 0.0
+    pipelines_all = PipelineStats(mean_latency_seconds=mean_latency_seconds)
 
     return SimulatorStats(
         pipelines_created=num_pipelines_created,
@@ -211,4 +236,5 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         suspensions=num_suspenions,
         failures=num_failures,
         failure_error_counts=dict(failure_error_counts),
+        pipelines_all=pipelines_all,
     )
