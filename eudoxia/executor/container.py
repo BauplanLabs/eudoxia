@@ -1,16 +1,16 @@
 import logging
-from typing import List
+from typing import List, Generator, Optional
 from eudoxia.utils import DISK_SCAN_GB_SEC, Priority
 from eudoxia.workload import Operator
 
 logger = logging.getLogger(__name__)
 
 
-class Container: 
+class Container:
     """
-    An encapsulation of CPU, RAM, and a list of operators. A container is
-    created and then calculates how many ticks it will need to run with
-    resources provided.
+    An encapsulation of CPU, RAM, and a list of operators. A container executes
+    operators tick-by-tick, tracking memory usage and allowing suspension only
+    between operator boundaries.
     """
     next_container_num = 1
 
@@ -21,18 +21,22 @@ class Container:
         self.ram = ram
         self.cpu = cpu
         self.operators: List[Operator] = ops
-        self.segment_tick_boundaries = []
         self.suspend_ticks = None
         self._suspend_ticks_left = None
         self.priority = prty
-        self.error: str = None
+        self.error: Optional[str] = None
         self.ticks_per_second = ticks_per_second
         self.tick_length_secs = 1.0 / ticks_per_second
 
-        self.num_ticks = self._compute_ticks() 
-        self._num_ticks_left = self.num_ticks
-        self.num_secs = self.num_ticks * self.tick_length_secs
-        
+        # Tick state (updated by generator)
+        self._current_memory: float = 0.0
+        self._can_suspend: bool = False
+        self._completed: bool = False
+        self._ticks_elapsed: int = 0
+
+        # Start the generator
+        self._tick_iter = self._tick_generator()
+
     def get_pipeline_id(self):
         """Get the pipeline ID from operators, handling mixed pipelines"""
         pipeline_ids = set()
@@ -49,62 +53,98 @@ class Container:
 
     def __repr__(self):
         num_ops = len(self.operators)
-        return f"container={self.container_id} pipeline={self.get_pipeline_id()} ops={num_ops} cpus={self.cpu} ram_gb={self.ram} runtime_secs={self.num_secs:.1f}"
+        return f"container={self.container_id} pipeline={self.get_pipeline_id()} ops={num_ops} cpus={self.cpu} ram_gb={self.ram}"
 
-    def _compute_ticks(self) -> int:
+    def _tick_generator(self) -> Generator[None, None, None]:
         """
-        This function utilizes functions provided by Segment to calculate the
-        amount of CPU and RAM ticks that are needed across all segments.  It also
-        computes the boundaries between segments.  The reason is that we can only
-        suspend containers between segments (not in the middle of while a segment
-        is running).
-        Returns:
-            int: number of ticks this container will need to run for
-        """
-        total_ticks = 0
-        for op in self.operators:
-            for seg in op.get_segments():
-                # will it OOM, and if so, when?
-                oom_seconds = seg.get_seconds_until_oom(self.ram)
+        Generator that drives tick-by-tick execution, updating container state directly.
 
-                if oom_seconds is not None:
-                    # compute how long it it will be until the OOM occurs
-                    self.error = "OOM"
-                    seg_ticks_before_OOM = int(oom_seconds / self.tick_length_secs)
-                    total_ticks += seg_ticks_before_OOM
-                    return total_ticks # after OOM, we cannot run other segments
-                else:
-                    # there is no OOM.  We will spend all the time
-                    # expected on I/O (first), then CPU (second)
-                    io_time_secs = seg.get_io_seconds()
-                    cpu_time_secs = seg.get_cpu_time(self.cpu)
-                    total_ticks += int((io_time_secs + cpu_time_secs) / self.tick_length_secs)
-                    self.segment_tick_boundaries.append(total_ticks)
-        return total_ticks
+        Updates self._current_memory and self._can_suspend on each yield.
+
+        Memory usage is determined by the current segment:
+        - If segment.memory_gb is set: fixed memory usage
+        - If segment.memory_gb is None: memory grows linearly with I/O progress
+
+        Suspension is only allowed between operators (not between segments).
+        """
+
+        # loop over every tick of every segment of every op
+        #
+        # at each iteration, determine memory usage, whether there is
+        # an OOM, and whether suspension is possible
+        for op_idx, op in enumerate(self.operators):
+            segments = op.get_segments()
+            for seg_idx, seg in enumerate(segments):
+                # Calculate ticks for I/O phase and CPU phase
+                io_secs = seg.get_io_seconds()
+                cpu_secs = seg.get_cpu_time(self.cpu)
+                io_ticks = int(io_secs / self.tick_length_secs)
+                cpu_ticks = int(cpu_secs / self.tick_length_secs)
+                total_seg_ticks = io_ticks+cpu_ticks
+
+                for i in range(total_seg_ticks):
+                    # determine current memory consumption
+                    if i < io_ticks:
+                        if seg.memory_gb is not None:
+                            self._current_memory = seg.memory_gb
+                        else:
+                            # Memory grows linearly with I/O progress
+                            io_progress_secs = (i + 1) * self.tick_length_secs
+                            self._current_memory = io_progress_secs * DISK_SCAN_GB_SEC
+                    else:
+                        self._current_memory = seg.get_peak_memory_gb()
+
+                    # have we OOM'd?
+                    if self._current_memory > self.ram:
+                        self.error = "OOM"
+                        self._completed = True
+                        yield
+                        return
+
+                    # are we at the end of the op (last tick of last
+                    # seg)?  if so, we're either completed, or we can
+                    # suspend, depending on whether this is the last
+                    # op.
+                    self._can_suspend = False
+                    if seg_idx == len(segments)-1 and i == total_seg_ticks - 1:
+                        if op_idx == len(self.operators) - 1:
+                            self._current_memory = 0.0
+                            self._completed = True
+                        else:
+                            self._can_suspend = True
+                    yield
 
     def tick(self):
-        self._num_ticks_left -= 1
+        """
+        Execute one tick. Advances to next state (OOM checked in _advance_tick).
+        """
+        if self._completed:
+            return
+        next(self._tick_iter)
+        self._ticks_elapsed += 1
 
     def is_completed(self):
-        # Use <= to handle edge case: immediate OOM results in 0 ticks,
-        # but tick() may still be called, causing _num_ticks_left to go negative
-        return (self._num_ticks_left <= 0)
+        return self._completed
+
+    def ticks_elapsed(self) -> int:
+        """Returns the number of ticks that have been executed."""
+        return self._ticks_elapsed
 
     def can_suspend_container(self) -> bool:
-        """Can only suspend a container if between execution of
-        segments. Must wait for Segment to complete before the
-        container is pausable"""
-        elapsed = self.num_ticks - self._num_ticks_left
-        if elapsed in self.segment_tick_boundaries:
-            return True
-        return False
+        """Can only suspend a container between operators."""
+        return self._can_suspend
+
+    def get_current_memory_usage(self) -> float:
+        """Returns current memory usage in GB."""
+        return self._current_memory
 
     def suspend_container(self):
         """
         Suspend container execution, free CPUs and RAM. Requires writing
-        current data to disk.  
+        current data to disk.
         """
-        write_to_disk_ticks = self.ram / DISK_SCAN_GB_SEC
+        write_to_disk_secs = self.ram / DISK_SCAN_GB_SEC
+        write_to_disk_ticks = int(write_to_disk_secs / self.tick_length_secs)
         self.suspend_ticks = write_to_disk_ticks
         self._suspend_ticks_left = write_to_disk_ticks
 
