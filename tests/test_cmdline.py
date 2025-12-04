@@ -24,7 +24,8 @@ class TestCommandLine(unittest.TestCase):
                 'assignments': 8,
                 'suspensions': 1,
                 'failures': 2,
-                'failure_error_counts': {'OOM': 2}
+                'failure_error_counts': {'OOM': 2},
+                'pipelines_all': type('PipelineStats', (), {'mean_latency_seconds': 0.5})()
             })()
             
             # Should not raise an exception
@@ -64,7 +65,8 @@ class TestCommandLine(unittest.TestCase):
                 'assignments': 2,
                 'suspensions': 0,
                 'failures': 0,
-                'failure_error_counts': {}
+                'failure_error_counts': {},
+                'pipelines_all': type('PipelineStats', (), {'mean_latency_seconds': 0.1})()
             })()
 
             # Should not raise an exception

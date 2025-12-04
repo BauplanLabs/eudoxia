@@ -47,13 +47,17 @@ class PipelineRuntimeStatus:
     def __init__(self, pipeline: 'Pipeline'):
         self.pipeline = pipeline
         self.operator_states: Dict['Operator', OperatorState] = {}
+        self.state_counts: Dict[OperatorState, int] = {state: 0 for state in OperatorState}
         self.arrival_tick: Optional[int] = None
+        self.finish_tick: Optional[int] = None
 
         for operator in pipeline.values:
             self.operator_states[operator] = OperatorState.PENDING
+            self.state_counts[OperatorState.PENDING] += 1
 
     def record_arrival(self, tick: int):
         """Record the tick at which this pipeline arrived."""
+        assert self.arrival_tick is None, "arrival_tick already recorded"
         self.arrival_tick = tick
 
     def check_transition(self, operator: 'Operator', new_state: OperatorState) -> tuple[bool, Optional[str]]:
@@ -85,8 +89,22 @@ class PipelineRuntimeStatus:
         """
         can_transition, error = self.check_transition(operator, new_state)
         assert can_transition, error
+        old_state = self.operator_states[operator]
+        self.state_counts[old_state] -= 1
+        self.state_counts[new_state] += 1
         self.operator_states[operator] = new_state
 
     def is_pipeline_successful(self) -> bool:
         """Check if all operators completed successfully."""
-        return all(state == OperatorState.COMPLETED for state in self.operator_states.values())
+        return self.state_counts[OperatorState.COMPLETED] == len(self.operator_states)
+
+    def record_finish(self, tick: int):
+        """Record the tick at which this pipeline finished."""
+        assert self.finish_tick is None, "finish_tick already recorded"
+        self.finish_tick = tick
+
+    def get_latency_ticks(self) -> int:
+        """Get the latency in ticks (finish_tick - arrival_tick)."""
+        assert self.arrival_tick is not None, "arrival_tick not recorded"
+        assert self.finish_tick is not None, "finish_tick not recorded"
+        return self.finish_tick - self.arrival_tick
