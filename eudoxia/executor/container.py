@@ -1,7 +1,7 @@
 import logging
 from typing import List, Generator, Optional
 from eudoxia.utils import DISK_SCAN_GB_SEC, Priority
-from eudoxia.workload import Operator
+from eudoxia.workload import Operator, OperatorState
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,12 @@ class Container:
         self._can_suspend: bool = False
         self._completed: bool = False
         self._ticks_elapsed: int = 0
+        # Index of current/next operator. Ops before this index are COMPLETED.
+        self._current_op_idx: int = 0
+
+        # Transition all operators to ASSIGNED
+        for op in self.operators:
+            op.transition(OperatorState.ASSIGNED)
 
         # Start the generator
         self._tick_iter = self._tick_generator()
@@ -73,6 +79,9 @@ class Container:
         # at each iteration, determine memory usage, whether there is
         # an OOM, and whether suspension is possible
         for op_idx, op in enumerate(self.operators):
+            # Transition to RUNNING when we start this operator
+            op.transition(OperatorState.RUNNING)
+
             segments = op.get_segments()
             for seg_idx, seg in enumerate(segments):
                 # Calculate ticks for I/O phase and CPU phase
@@ -97,6 +106,7 @@ class Container:
                     # have we OOM'd?
                     if self._current_memory > self.ram:
                         self.error = "OOM"
+                        op.transition(OperatorState.FAILED)
                         self._completed = True
                         yield
                         return
@@ -107,6 +117,9 @@ class Container:
                     # op.
                     self._can_suspend = False
                     if seg_idx == len(segments)-1 and i == total_seg_ticks - 1:
+                        # Operator completed successfully
+                        op.transition(OperatorState.COMPLETED)
+                        self._current_op_idx += 1
                         if op_idx == len(self.operators) - 1:
                             self._current_memory = 0.0
                             self._completed = True
@@ -148,8 +161,17 @@ class Container:
         self.suspend_ticks = write_to_disk_ticks
         self._suspend_ticks_left = write_to_disk_ticks
 
+        # Transition remaining operators (ASSIGNED) to SUSPENDING
+        # Ops before _current_op_idx are already COMPLETED
+        for op in self.operators[self._current_op_idx:]:
+            op.transition(OperatorState.SUSPENDING)
+
     def suspend_container_tick(self):
         self._suspend_ticks_left -= 1
+        if self._suspend_ticks_left == 0:
+            # Suspension complete - transition ops back to PENDING for re-assignment
+            for op in self.operators[self._current_op_idx:]:
+                op.transition(OperatorState.PENDING)
 
     def is_suspended(self) -> bool:
         return (self._suspend_ticks_left == 0)

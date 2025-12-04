@@ -4,8 +4,9 @@ from typing import Dict, List, Optional
 
 class OperatorState(Enum):
     """States an operator can be in during execution"""
-    PENDING = "pending"           # Not yet assigned, or suspended and ready for re-assignment
-    RUNNING = "running"           # Assigned to a container, currently executing
+    PENDING = "pending"           # Not yet assigned, available for scheduling
+    ASSIGNED = "assigned"         # In a container, waiting for turn to execute
+    RUNNING = "running"           # Currently executing in a container
     SUSPENDING = "suspending"     # Container writing RAM to disk
     COMPLETED = "completed"       # Successfully finished (terminal state)
     FAILED = "failed"             # Execution failed (retry is possible)
@@ -14,22 +15,22 @@ class OperatorState(Enum):
 # Valid state transitions for each state
 VALID_TRANSITIONS: Dict[OperatorState, List[OperatorState]] = {
     OperatorState.PENDING: [
+        OperatorState.ASSIGNED,
+    ],
+    OperatorState.ASSIGNED: [
         OperatorState.RUNNING,
-        OperatorState.FAILED,
+        OperatorState.SUSPENDING,
     ],
     OperatorState.RUNNING: [
-        OperatorState.SUSPENDING,
         OperatorState.COMPLETED,
         OperatorState.FAILED,
     ],
     OperatorState.SUSPENDING: [
         OperatorState.PENDING,
-        OperatorState.COMPLETED,
-        OperatorState.FAILED,
     ],
     OperatorState.COMPLETED: [],
     OperatorState.FAILED: [
-        OperatorState.RUNNING,
+        OperatorState.ASSIGNED,
     ],
 }
 
@@ -66,6 +67,7 @@ class PipelineRuntimeStatus:
         if new_state not in VALID_TRANSITIONS[current_state]:
             return (False, f"Cannot transition from {current_state.value} to {new_state.value}")
 
+        # Dependencies checked when starting execution, not when assigning
         if new_state == OperatorState.RUNNING:
             for parent in operator.parents:
                 if self.operator_states[parent] != OperatorState.COMPLETED:
@@ -84,9 +86,9 @@ class PipelineRuntimeStatus:
         assert can_transition, error
         self.operator_states[operator] = new_state
 
-    def can_schedule(self, operator: 'Operator') -> tuple[bool, Optional[str]]:
-        """Check if an operator can be scheduled (i.e., transitioned to RUNNING)."""
-        return self.check_transition(operator, OperatorState.RUNNING)
+    def can_assign(self, operator: 'Operator') -> tuple[bool, Optional[str]]:
+        """Check if an operator can be assigned to a container."""
+        return self.check_transition(operator, OperatorState.ASSIGNED)
 
     def is_pipeline_successful(self) -> bool:
         """Check if all operators completed successfully."""

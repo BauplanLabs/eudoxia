@@ -2,7 +2,6 @@ import logging
 from typing import List
 from .assignment import Assignment, Suspend, ExecutionResult
 from .container import Container
-from eudoxia.workload import OperatorState
 
 logger = logging.getLogger(__name__)
 
@@ -92,9 +91,6 @@ class ResourcePool:
             for s in suspensions:
                 container = self.get_container_by_id(s.container_id)
                 container.suspend_container()
-                # Transition operators to SUSPENDING state
-                for op in container.operators:
-                    op.transition(OperatorState.SUSPENDING)
                 self.suspending_containers.append(container)
                 self.active_containers.remove(container)
         
@@ -117,38 +113,15 @@ class ResourcePool:
                     logger.error(f"Assignment validation failed: multiple operators not allowed")
                     continue
 
-                # Validate operator dependencies using runtime_status
-                validation_error = None
+                # Validate operators can be assigned
                 for op in a.ops:
-                    can_schedule, error_msg = op.pipeline.runtime_status().can_schedule(op)
-                    if not can_schedule:
-                        validation_error = error_msg
-                        break
+                    can_assign, error_msg = op.pipeline.runtime_status().can_assign(op)
+                    assert can_assign, f"Invalid assignment: {error_msg}"
 
-                if validation_error:
-                    # Create failed ExecutionResult without creating container
-                    result = ExecutionResult(
-                        ops=a.ops,
-                        cpu=a.cpu,
-                        ram=a.ram,
-                        priority=a.priority,
-                        pool_id=self.pool_id,
-                        container_id=None,
-                        error="dependency"
-                    )
-                    results.append(result)
-                    logger.error(f"Assignment validation failed: {validation_error}")
-                    # Don't transition to FAILED - validation failure just rejects assignment
-                    # Operators stay in their current state for potential retry
-                    continue
-
-                # Create container only if validation passes
+                # Create container (transitions ops to ASSIGNED, then RUNNING as they execute)
                 container = Container(ram=a.ram, cpu=a.cpu, ops=a.ops,
                                       prty=a.priority, pool_id=self.pool_id,
                                       ticks_per_second=self.ticks_per_second)
-                # Transition operators to RUNNING state
-                for op in a.ops:
-                    op.transition(OperatorState.RUNNING)
                 self.avail_cpu_pool -= a.cpu
                 self.avail_ram_pool -= a.ram
                 self.active_containers.append(container)
@@ -158,9 +131,6 @@ class ResourcePool:
         for c in self.suspending_containers:
             c.suspend_container_tick()
             if c.is_suspended():
-                # Transition operators back to PENDING (ready for re-assignment)
-                for op in c.operators:
-                    op.transition(OperatorState.PENDING)
                 self.avail_cpu_pool += c.cpu
                 self.avail_ram_pool += c.ram
                 to_remove.append(c)
@@ -172,21 +142,12 @@ class ResourcePool:
         for c in self.active_containers:
             c.tick()
             if c.is_completed():
-                # self.status_report()
                 self.avail_cpu_pool += c.cpu
                 self.avail_ram_pool += c.ram
                 to_remove.append(c)
 
-                # Transition operators based on success or failure
                 if c.error is None:
-                    # Success - transition to COMPLETED
-                    for op in c.operators:
-                        op.transition(OperatorState.COMPLETED)
                     self.num_completed += 1
-                else:
-                    # Failure - transition to FAILED
-                    for op in c.operators:
-                        op.transition(OperatorState.FAILED)
 
                 # Create an ExecutionResult for every completed container
                 result = ExecutionResult(ops=c.operators, cpu=c.cpu, ram=c.ram,

@@ -88,7 +88,7 @@ def test_resource_pool_basic():
 
 
 def test_resource_pool_dependencies():
-    """Test that ResourcePool rejects operators assigned out of order"""
+    """Test that container fails when trying to run operator with unsatisfied dependencies"""
     pool = ResourcePool(
         pool_id=0,
         cpu_pool=10,
@@ -108,7 +108,8 @@ def test_resource_pool_dependencies():
     pipeline.add_operator(op_a)
     pipeline.add_operator(op_b, [op_a])
 
-    # Try to assign B before A completes (should fail)
+    # Assign B before A completes - assignment succeeds (PENDING -> ASSIGNED)
+    # but container will fail when trying to transition B to RUNNING
     assignment_b = Assignment(
         ops=[op_b],
         cpu=2,
@@ -118,10 +119,11 @@ def test_resource_pool_dependencies():
         pipeline_id="dep_test"
     )
 
-    results = pool.run_one_tick([], [assignment_b])
-    assert len(results) == 1
-    assert results[0].failed()
-    assert results[0].error == "dependency"
+    pool.run_one_tick([], [assignment_b])
+
+    # Container tries to transition B to RUNNING, but A isn't COMPLETED
+    with pytest.raises(AssertionError, match="Dependencies not satisfied"):
+        pool.run_one_tick([], [])
 
 
 def test_runtime_status_dependencies():
