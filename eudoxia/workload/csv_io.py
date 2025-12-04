@@ -143,11 +143,21 @@ class CSVWorkloadReader(WorkloadReader):
         
         # Create the pipeline
         pipeline = Pipeline(pipeline_id, priority)
-        
+
         # Create operators and segments (1:1 relationship)
         operators = {}  # operator_id -> Operator
-        
+
         for row in batch:
+            # Resolve parent operators (must have been created already)
+            if not row.parents:
+                parent_operators = None
+            else:
+                parent_ids = [pid.strip() for pid in row.parents.split(';') if pid.strip()]
+                parent_operators = [operators[pid] for pid in parent_ids]
+
+            # Create the operator and add to DAG
+            operator = pipeline.new_operator(parent_operators)
+
             # Create the single segment for this operator
             segment = Segment(
                 baseline_cpu_seconds=row.baseline_cpu_seconds,
@@ -155,24 +165,8 @@ class CSVWorkloadReader(WorkloadReader):
                 memory_gb=row.memory_gb,
                 storage_read_gb=row.storage_read_gb
             )
-
-            # Create the operator with exactly one segment
-            operator = Operator()
             operator.add_segment(segment)
             operators[row.operator_id] = operator
-        
-        # Build the DAG structure
-        for row in batch:
-            operator = operators[row.operator_id]
-            
-            if not row.parents:
-                # root
-                pipeline.add_operator(operator)
-            else:
-                # other
-                parent_ids = [pid.strip() for pid in row.parents.split(';') if pid.strip()]
-                parent_operators = [operators[pid] for pid in parent_ids]
-                pipeline.add_operator(operator, parent_operators)
 
         return pipeline
 

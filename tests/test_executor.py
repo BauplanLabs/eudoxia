@@ -22,26 +22,24 @@ def test_resource_pool_basic():
 
     # Create pipeline and operator for successful container
     pipeline_success = Pipeline(pipeline_id="success_pipeline", priority=Priority.BATCH_PIPELINE)
-    op_success = Operator()
+    op_success = pipeline_success.new_operator()
     op_success.add_segment(Segment(
         baseline_cpu_seconds=0.1,  # 0.1 seconds
         cpu_scaling="const",
         memory_gb=10,  # Reasonable memory usage
         storage_read_gb=0
     ))
-    pipeline_success.add_operator(op_success)
 
     # Create pipeline and operator for OOM container
     # Use storage_read_gb with no fixed memory_gb to get linear growth OOM
     pipeline_oom = Pipeline(pipeline_id="oom_pipeline", priority=Priority.BATCH_PIPELINE)
-    op_oom = Operator()
+    op_oom = pipeline_oom.new_operator()
     op_oom.add_segment(Segment(
         baseline_cpu_seconds=0.1,  # 0.1 seconds
         cpu_scaling="const",
         storage_read_gb=200  # Linear memory growth - will OOM when it hits 50GB limit
         # memory_gb not set, so memory grows linearly as storage is read
     ))
-    pipeline_oom.add_operator(op_oom)
 
     # Create assignments
     assignment_success = Assignment(
@@ -99,14 +97,11 @@ def test_resource_pool_dependencies():
 
     # Create pipeline with A -> B
     pipeline = Pipeline(pipeline_id="dep_test", priority=Priority.BATCH_PIPELINE)
-    op_a = Operator()
-    op_b = Operator()
+    op_a = pipeline.new_operator()
+    op_b = pipeline.new_operator([op_a])
 
     op_a.add_segment(Segment(baseline_cpu_seconds=0.1, cpu_scaling="const", memory_gb=5))
     op_b.add_segment(Segment(baseline_cpu_seconds=0.1, cpu_scaling="const", memory_gb=5))
-
-    pipeline.add_operator(op_a)
-    pipeline.add_operator(op_b, [op_a])
 
     # Assign B before A completes - assignment succeeds (PENDING -> ASSIGNED)
     # but container will fail when trying to transition B to RUNNING
@@ -128,11 +123,8 @@ def test_runtime_status_dependencies():
     Make sure the transition is always rejected, until a is complete."""
     # Create pipeline with A -> B
     pipeline = Pipeline(pipeline_id="test_pipeline", priority=Priority.BATCH_PIPELINE)
-    op_a = Operator()
-    op_b = Operator()
-
-    pipeline.add_operator(op_a)
-    pipeline.add_operator(op_b, [op_a])
+    op_a = pipeline.new_operator()
+    op_b = pipeline.new_operator([op_a])
 
     # Initialize runtime status
     status = pipeline.runtime_status()
@@ -157,8 +149,7 @@ def test_runtime_status_state_transitions():
     """Test PipelineRuntimeStatus state tracking through operator lifecycle"""
     # Create simple pipeline with one operator
     pipeline = Pipeline(pipeline_id="state_test", priority=Priority.BATCH_PIPELINE)
-    op = Operator()
-    pipeline.add_operator(op)
+    op = pipeline.new_operator()
 
     status = pipeline.runtime_status()
 

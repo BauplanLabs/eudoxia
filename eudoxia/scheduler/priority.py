@@ -1,7 +1,7 @@
 from typing import List, Tuple, Dict
 import uuid
 import logging
-from eudoxia.workload import Pipeline, Operator
+from eudoxia.workload import Pipeline, Operator, OperatorState
 from eudoxia.executor.assignment import Assignment, ExecutionResult, Suspend
 from eudoxia.utils import Priority
 from .decorators import register_scheduler_init, register_scheduler
@@ -47,7 +47,8 @@ def priority_scheduler(s, results: List[ExecutionResult],
     """
     # Add new pipelines to appropriate queues
     for p in pipelines:
-        job = WaitingQueueJob(priority=p.priority, p=p)
+        ops = list(p.values)
+        job = WaitingQueueJob(priority=p.priority, p=p, ops=ops)
         if p.priority == Priority.QUERY:
             s.qry_jobs.append(job)
         elif p.priority == Priority.INTERACTIVE:
@@ -59,11 +60,12 @@ def priority_scheduler(s, results: List[ExecutionResult],
     failures = [r for r in results if r.failed()]
 
     for f in failures:
-        # Try to get pipeline from the first operator
-        pipeline = None
-        if f.ops and len(f.ops) > 0 and f.ops[0].pipeline:
-            pipeline = f.ops[0].pipeline
-        job = WaitingQueueJob(priority=f.priority, p=pipeline, ops=f.ops,
+        # Filter out completed operators
+        ops = [op for op in f.ops if op.state() != OperatorState.COMPLETED]
+        assert ops, "failed container has no incomplete operators"
+        # Get pipeline from the first operator
+        pipeline = ops[0].pipeline
+        job = WaitingQueueJob(priority=f.priority, p=pipeline, ops=ops,
                               container_id=f.container_id, pool_id=f.pool_id, old_ram=f.ram, old_cpu=f.cpu,
                               error=f.error)
         if f.priority == Priority.QUERY:
@@ -75,12 +77,14 @@ def priority_scheduler(s, results: List[ExecutionResult],
 
     for pool_id in range(s.executor.num_pools):
         for c in s.executor.pools[pool_id].suspending_containers:
-            # Try to get pipeline from the first operator
-            pipeline = None
-            if c.operators and len(c.operators) > 0 and c.operators[0].pipeline:
-                pipeline = c.operators[0].pipeline
+            # Filter out completed operators
+            ops = [op for op in c.operators if op.state() != OperatorState.COMPLETED]
+            assert ops, "failed container has no incomplete operators"
+
+            # Get pipeline from the first operator
+            pipeline = ops[0].pipeline
             job = WaitingQueueJob(priority=c.priority, p=pipeline,
-                                  ops=c.operators, pool_id=pool_id,
+                                  ops=ops, pool_id=pool_id,
                                   container_id=c.container_id, old_ram=c.ram, old_cpu=c.cpu,
                                   error=c.error)
             # Store job by container_id
@@ -137,10 +141,7 @@ def priority_scheduler(s, results: List[ExecutionResult],
                 break
 
             to_remove.append(job)
-            if job.pipeline is not None:
-                op_list = [op for op in job.pipeline.values]
-            else: 
-                op_list = job.ops
+            op_list = job.ops
 
             # is this job placed in the queue because it previously failed,
             # i.e. OOM error
