@@ -54,6 +54,7 @@ def priority_pool_scheduler(s, results: List[ExecutionResult],
         # Filter out completed operators
         ops = [op for op in f.ops if op.state() != OperatorState.COMPLETED]
         assert ops, "failed container has no incomplete operators"
+
         # Get pipeline from the first operator
         pipeline = ops[0].pipeline
         job = WaitingQueueJob(priority=f.priority, p=pipeline, ops=ops,
