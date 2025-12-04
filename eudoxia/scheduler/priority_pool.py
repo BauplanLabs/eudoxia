@@ -69,8 +69,13 @@ def priority_pool_scheduler(s, results: List[ExecutionResult],
 
     for pool_id in range(s.executor.num_pools):
         for c in s.executor.pools[pool_id].suspending_containers:
-            job = WaitingQueueJob(priority=c.priority, p=None,
-                                  ops=c.operators, pool_id=pool_id,
+            # Filter out completed operators
+            ops = [op for op in c.operators if op.state() != OperatorState.COMPLETED]
+            assert ops, "suspended container has no incomplete operators"
+            # Get pipeline from the first operator
+            pipeline = ops[0].pipeline
+            job = WaitingQueueJob(priority=c.priority, p=pipeline,
+                                  ops=ops, pool_id=pool_id,
                                   container_id=c.container_id, old_ram=c.ram, old_cpu=c.cpu,
                                   error=c.error)
             # c.container_id is UUID type. must use it represented as an int to have
