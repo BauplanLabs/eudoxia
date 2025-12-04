@@ -113,11 +113,6 @@ class ResourcePool:
                     logger.error(f"Assignment validation failed: multiple operators not allowed")
                     continue
 
-                # Validate operators can be assigned
-                for op in a.ops:
-                    can_assign, error_msg = op.pipeline.runtime_status().can_assign(op)
-                    assert can_assign, f"Invalid assignment: {error_msg}"
-
                 # Create container (transitions ops to ASSIGNED, then RUNNING as they execute)
                 container = Container(ram=a.ram, cpu=a.cpu, ops=a.ops,
                                       prty=a.priority, pool_id=self.pool_id,

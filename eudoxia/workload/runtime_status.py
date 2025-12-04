@@ -86,10 +86,6 @@ class PipelineRuntimeStatus:
         assert can_transition, error
         self.operator_states[operator] = new_state
 
-    def can_assign(self, operator: 'Operator') -> tuple[bool, Optional[str]]:
-        """Check if an operator can be assigned to a container."""
-        return self.check_transition(operator, OperatorState.ASSIGNED)
-
     def is_pipeline_successful(self) -> bool:
         """Check if all operators completed successfully."""
         return all(state == OperatorState.COMPLETED for state in self.operator_states.values())

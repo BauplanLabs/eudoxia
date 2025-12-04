@@ -119,15 +119,13 @@ def test_resource_pool_dependencies():
         pipeline_id="dep_test"
     )
 
-    pool.run_one_tick([], [assignment_b])
-
-    # Container tries to transition B to RUNNING, but A isn't COMPLETED
     with pytest.raises(AssertionError, match="Dependencies not satisfied"):
-        pool.run_one_tick([], [])
+        pool.run_one_tick([], [assignment_b])
 
 
 def test_runtime_status_dependencies():
-    """Test PipelineRuntimeStatus correctly validates operator scheduling"""
+    """Op b depends on a.  Keep trying to transition b to running.
+    Make sure the transition is always rejected, until a is complete."""
     # Create pipeline with A -> B
     pipeline = Pipeline(pipeline_id="test_pipeline", priority=Priority.BATCH_PIPELINE)
     op_a = Operator()
@@ -139,15 +137,20 @@ def test_runtime_status_dependencies():
     # Initialize runtime status
     status = pipeline.runtime_status()
 
-    # Try to schedule B before A completes (should fail)
-    can_schedule, error = status.can_schedule(op_b)
-    assert not can_schedule
-    assert "Dependencies not satisfied" in error
+    op_b.transition(OperatorState.ASSIGNED)
+    with pytest.raises(AssertionError):
+        op_b.transition(OperatorState.RUNNING)
+    
+    op_a.transition(OperatorState.ASSIGNED)
+    with pytest.raises(AssertionError):
+        op_b.transition(OperatorState.RUNNING)
 
-    # A should be schedulable
-    can_schedule, error = status.can_schedule(op_a)
-    assert can_schedule
-    assert error is None
+    op_a.transition(OperatorState.RUNNING)
+    with pytest.raises(AssertionError):
+        op_b.transition(OperatorState.RUNNING)
+
+    op_a.transition(OperatorState.COMPLETED)
+    op_b.transition(OperatorState.RUNNING)
 
 
 def test_runtime_status_state_transitions():
@@ -161,6 +164,15 @@ def test_runtime_status_state_transitions():
 
     # Initially PENDING
     assert status.operator_states[op] == OperatorState.PENDING
+
+    # Transition to ASSIGNED
+    op.transition(OperatorState.ASSIGNED)
+    assert status.operator_states[op] == OperatorState.ASSIGNED
+
+    # Cannot double assign
+    with pytest.raises(AssertionError):
+        op.transition(OperatorState.ASSIGNED)
+        assert status.operator_states[op] == OperatorState.ASSIGNED
 
     # Transition to RUNNING
     op.transition(OperatorState.RUNNING)
