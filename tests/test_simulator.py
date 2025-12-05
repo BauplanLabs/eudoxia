@@ -38,6 +38,7 @@ def test_run_simulator_basic(scheduler_algo):
     # configure scheduler
     params = get_param_defaults()
     params['scheduler_algo'] = scheduler_algo
+    params['ticks_per_second'] = 1000
     if scheduler_algo == "priority-pool":
         params['num_pools'] = 2  # priority-pool scheduler requires 2 pools
 
@@ -123,6 +124,7 @@ def test_oom_retry(scheduler_algo):
     params['ram_pool'] = 100  # 100 GB RAM total
     params['cpu_pool'] = 8
     params['duration'] = 10.0
+    params['ticks_per_second'] = 1000
     if scheduler_algo == "priority-pool":
         params['num_pools'] = 2
 
