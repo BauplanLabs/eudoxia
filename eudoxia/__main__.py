@@ -132,6 +132,9 @@ def main(argv=None):
     run_parser = subparsers.add_parser('run', help='Run simulation')
     run_parser.add_argument('params_file', help='Path to TOML parameters file')
     run_parser.add_argument('-w', '--workload', help='Path to CSV workload file')
+    run_parser.add_argument('-i', '--import', dest='imports', action='append', default=[],
+                           metavar='MODULE', help='Import a module (can be repeated). '
+                           'Useful for loading custom schedulers with @register_scheduler decorators.')
     
     # Gentrace subcommand
     gentrace_parser = subparsers.add_parser('gentrace', help='Generate CSV workload trace from parameters')
@@ -189,6 +192,18 @@ def main(argv=None):
         sys.exit(1)
 
     if args.command == 'run':
+        # Import user-specified modules (e.g., custom schedulers)
+        for module_name in args.imports:
+            try:
+                __import__(module_name)
+            except ImportError as e:
+                print(f"Error: Could not import module '{module_name}': {e}", file=sys.stderr)
+                print(f"sys.path:", file=sys.stderr)
+                for p in sys.path:
+                    print(f" - {p}", file=sys.stderr)
+                print(f"\nTo add the current directory to the path:", file=sys.stderr)
+                print(f"  PYTHONPATH=. eudoxia run ...", file=sys.stderr)
+                sys.exit(1)
         run_command(args.params_file, workload=args.workload)
     elif args.command == 'gentrace':
         gentrace_command(args.params_file, args.output_file, force=args.force)

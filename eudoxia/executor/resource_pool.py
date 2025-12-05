@@ -114,13 +114,13 @@ class ResourcePool:
                     continue
 
                 # Create container (transitions ops to ASSIGNED, then RUNNING as they execute)
+                logger.info(f"start container ram={a.ram} cpu={a.cpu} ops={len(a.ops)} priority={a.priority} pool_id={self.pool_id} pipeline_id={a.pipeline_id}")
                 container = Container(ram=a.ram, cpu=a.cpu, ops=a.ops,
                                       prty=a.priority, pool_id=self.pool_id,
                                       ticks_per_second=self.ticks_per_second)
                 self.avail_cpu_pool -= a.cpu
                 self.avail_ram_pool -= a.ram
                 self.active_containers.append(container)
-                logger.info(f"start container {container}")
 
         to_remove = []
         for c in self.suspending_containers:
