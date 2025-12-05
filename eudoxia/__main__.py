@@ -93,8 +93,74 @@ def gentrace_command(params_file, output_file, force=False):
     print(f"Generated workload trace saved to {output_file}")
 
 
-def init_command(output_file, force=False):
-    """Create TOML file with default parameters"""
+SCHEDULER_TEMPLATE = '''\
+from typing import List, Tuple
+from eudoxia.workload import Pipeline
+from eudoxia.executor.assignment import Assignment, ExecutionResult, Suspend
+from eudoxia.scheduler.decorators import register_scheduler_init, register_scheduler
+
+
+@register_scheduler_init(key="{scheduler_name}")
+def {scheduler_name}_init(s):
+    """Initialize scheduler state.
+
+    Args:
+        s: The scheduler instance. You can add custom attributes here.
+    """
+    s.waiting_queue: List[Pipeline] = []
+
+
+@register_scheduler(key="{scheduler_name}")
+def {scheduler_name}_scheduler(s, results: List[ExecutionResult],
+                   pipelines: List[Pipeline]) -> Tuple[List[Suspend], List[Assignment]]:
+    """
+    A simple FIFO scheduler that allocates all resources of a pool to a single pipeline.
+
+    Args:
+        s: The scheduler instance (with access to s.executor, s.waiting_queue, etc.)
+        results: List of execution results from previous tick
+        pipelines: List of new pipelines from WorkloadGenerator
+
+    Returns:
+        Tuple[List[Suspend], List[Assignment]]:
+            - List of containers to suspend
+            - List of new assignments to make
+    """
+    # Add new pipelines to queue
+    for p in pipelines:
+        s.waiting_queue.append(p)
+
+    if len(s.waiting_queue) == 0:
+        return [], []
+
+    suspensions = []
+    assignments = []
+
+    # Try to assign work to each pool
+    for pool_id in range(s.executor.num_pools):
+        pool = s.executor.pools[pool_id]
+        avail_cpu = pool.avail_cpu_pool
+        avail_ram = pool.avail_ram_pool
+
+        if avail_cpu > 0 and avail_ram > 0 and s.waiting_queue:
+            pipeline = s.waiting_queue.pop(0)
+            op_list = list(pipeline.values)
+            assignment = Assignment(
+                ops=op_list,
+                cpu=avail_cpu,
+                ram=avail_ram,
+                priority=pipeline.priority,
+                pool_id=pool_id,
+                pipeline_id=pipeline.pipeline_id
+            )
+            assignments.append(assignment)
+
+    return suspensions, assignments
+'''
+
+
+def init_command(output_file, force=False, scheduler_name=None):
+    """Create TOML file with default parameters, and optionally a starter scheduler."""
     output_path = Path(output_file)
 
     # Check if file already exists
@@ -105,6 +171,24 @@ def init_command(output_file, force=False):
     # Get default parameters
     defaults = get_param_defaults()
 
+    # If scheduler name provided, create the scheduler file and update config
+    if scheduler_name:
+        scheduler_file = f"{scheduler_name}.py"
+        scheduler_path = output_path.parent / scheduler_file
+
+        if scheduler_path.exists() and not force:
+            print(f"Error: Scheduler file '{scheduler_path}' already exists. Use --force to overwrite.", file=sys.stderr)
+            sys.exit(1)
+
+        # Write scheduler file
+        with open(scheduler_path, 'w') as f:
+            f.write(SCHEDULER_TEMPLATE.format(scheduler_name=scheduler_name))
+
+        print(f"Created scheduler file: {scheduler_path}")
+
+        # Update defaults to use the new scheduler
+        defaults['scheduler_algo'] = scheduler_name
+
     # Create TOML table and update with defaults
     t = tomlkit.table()
     t.update(defaults)
@@ -114,6 +198,10 @@ def init_command(output_file, force=False):
         tomlkit.dump(t, f)
 
     print(f"Created default parameters file: {output_file}")
+
+    if scheduler_name:
+        print(f"\nTo run with your custom scheduler:")
+        print(f"  PYTHONPATH=. eudoxia run -i {scheduler_name} {output_file}")
 
 
 # entry point if the user just runs "eudoxia".  In that case, argv
@@ -142,7 +230,9 @@ def main(argv=None):
     # Init subcommand
     init_parser = subparsers.add_parser('init', help='Create TOML file with default parameters')
     init_parser.add_argument('output_file', help='Path to output TOML parameters file')
-    init_parser.add_argument('-f', '--force', action='store_true', help='Overwrite existing file')
+    init_parser.add_argument('-s', '--scheduler', metavar='NAME',
+                            help='Create a starter scheduler file named NAME.py')
+    init_parser.add_argument('-f', '--force', action='store_true', help='Overwrite existing files')
 
     # Tools command group
     tools_parser = subparsers.add_parser('tools', help='Workload manipulation and analysis tools')
@@ -193,7 +283,7 @@ def main(argv=None):
     elif args.command == 'gentrace':
         gentrace_command(args.params_file, args.output_file, force=args.force)
     elif args.command == 'init':
-        init_command(args.output_file, force=args.force)
+        init_command(args.output_file, force=args.force, scheduler_name=args.scheduler)
     elif args.command == 'tools':
         if args.tool_command == 'snap':
             snap_command(args.input_workload, args.output_file, args.ticks_per_second, force=args.force)
