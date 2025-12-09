@@ -45,13 +45,26 @@ def run_command(params_file, workload=None):
     print(f"Simulation completed:")
     print(f"  Pipelines created: {stats.pipelines_created}")
     print(f"  Pipelines completed: {stats.pipelines_completed}")
-    print(f"  Throughput: {stats.throughput:.2f} pipelines/sec")
-    print(f"  P99 latency: {stats.p99_latency:.2f}s")
+    print(f"  Container throughput: {stats.throughput:.2f} containers/sec")
+    print(f"  Container P99 latency: {stats.p99_latency:.2f}s")
     print(f"  Assignments: {stats.assignments}")
     print(f"  Suspensions: {stats.suspensions}")
     print(f"  Failures: {stats.failures}")
     print(f"  Failure/error counts: {stats.failure_error_counts}")
-    print(f"  Pipeline mean latency: {stats.pipelines_all.mean_latency_seconds:.2f}s")
+    print()
+    print("  Pipeline Stats:")
+    print("  " + "-" * 68)
+    print(f"  {'Priority':<15} {'Arrived':>10} {'Completed':>10} {'Mean (s)':>12} {'P99 (s)':>12}")
+    print("  " + "-" * 68)
+    pipeline_stats = [
+        ("All", stats.pipelines_all),
+        ("Query", stats.pipelines_query),
+        ("Interactive", stats.pipelines_interactive),
+        ("Batch", stats.pipelines_batch),
+    ]
+    for name, pstats in pipeline_stats:
+        print(f"  {name:<15} {pstats.arrival_count:>10} {pstats.completion_count:>10} {pstats.mean_latency_seconds:>12.2f} {pstats.p99_latency_seconds:>12.2f}")
+    print("  " + "-" * 68)
 
 
 def gentrace_command(params_file, output_file, force=False):
