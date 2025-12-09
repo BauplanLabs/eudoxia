@@ -16,6 +16,12 @@ class TestCommandLine(unittest.TestCase):
         
         # Mock run_simulator to avoid actual simulation
         with patch('eudoxia.__main__.run_simulator') as mock_run:
+            mock_pstats = type('PipelineStats', (), {
+                'arrival_count': 5,
+                'completion_count': 3,
+                'mean_latency_seconds': 0.5,
+                'p99_latency_seconds': 0.8,
+            })()
             mock_run.return_value = type('Stats', (), {
                 'pipelines_created': 5,
                 'pipelines_completed': 3,
@@ -25,7 +31,10 @@ class TestCommandLine(unittest.TestCase):
                 'suspensions': 1,
                 'failures': 2,
                 'failure_error_counts': {'OOM': 2},
-                'pipelines_all': type('PipelineStats', (), {'mean_latency_seconds': 0.5})()
+                'pipelines_all': mock_pstats,
+                'pipelines_query': mock_pstats,
+                'pipelines_interactive': mock_pstats,
+                'pipelines_batch': mock_pstats,
             })()
             
             # Should not raise an exception
@@ -57,6 +66,12 @@ class TestCommandLine(unittest.TestCase):
         
         # Mock run_simulator to avoid actual simulation
         with patch('eudoxia.__main__.run_simulator') as mock_run:
+            mock_pstats = type('PipelineStats', (), {
+                'arrival_count': 1,
+                'completion_count': 1,
+                'mean_latency_seconds': 0.1,
+                'p99_latency_seconds': 0.2,
+            })()
             mock_run.return_value = type('Stats', (), {
                 'pipelines_created': 1,
                 'pipelines_completed': 1,
@@ -66,7 +81,10 @@ class TestCommandLine(unittest.TestCase):
                 'suspensions': 0,
                 'failures': 0,
                 'failure_error_counts': {},
-                'pipelines_all': type('PipelineStats', (), {'mean_latency_seconds': 0.1})()
+                'pipelines_all': mock_pstats,
+                'pipelines_query': mock_pstats,
+                'pipelines_interactive': mock_pstats,
+                'pipelines_batch': mock_pstats,
             })()
 
             # Should not raise an exception

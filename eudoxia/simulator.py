@@ -5,6 +5,7 @@ from typing import List, Dict, Union, NamedTuple
 import numpy as np
 
 from eudoxia.utils.consts import MICROSEC_TO_SEC
+from eudoxia.utils.utils import Priority
 from eudoxia.executor import Executor
 from eudoxia.scheduler import Scheduler
 from eudoxia.workload import Workload, WorkloadGenerator, Pipeline
@@ -29,8 +30,31 @@ class SimulatedTimeFormatter(logging.Formatter):
         return f"[{self.elapsed_seconds:6.1f}s] {record.levelname}:{record.name}: {record.getMessage()}"
 
 class PipelineStats(NamedTuple):
-    """Statistics for a category of pipelines"""
+    """Statistics for a category of pipelines.  completion_count only
+    counts successfully completed (failed are not technically
+    complete, because retry is always possible).  The latency stats
+    are for the completed pipelines only."""
+    arrival_count: int
+    completion_count: int
     mean_latency_seconds: float
+    p99_latency_seconds: float
+
+
+def compute_pipeline_stats(arrival_count: int, latencies: List[int], ticks_per_second: int) -> PipelineStats:
+    """Compute PipelineStats from arrival count and list of latency ticks."""
+    completion_count = len(latencies)
+    if latencies:
+        mean_latency_seconds = np.mean(latencies) / ticks_per_second
+        p99_latency_seconds = np.percentile(latencies, 99) / ticks_per_second
+    else:
+        mean_latency_seconds = float('nan')
+        p99_latency_seconds = float('nan')
+    return PipelineStats(
+        arrival_count=arrival_count,
+        completion_count=completion_count,
+        mean_latency_seconds=mean_latency_seconds,
+        p99_latency_seconds=p99_latency_seconds,
+    )
 
 
 class SimulatorStats(NamedTuple):
@@ -44,6 +68,9 @@ class SimulatorStats(NamedTuple):
     failures: int
     failure_error_counts: int
     pipelines_all: PipelineStats
+    pipelines_query: PipelineStats
+    pipelines_interactive: PipelineStats
+    pipelines_batch: PipelineStats
 
 def get_param_defaults() -> Dict:
     """
@@ -55,8 +82,8 @@ def get_param_defaults() -> Dict:
     return {
         # how long the simulation will run in seconds
         "duration": 60,
-        # number of ticks per second (100,000 ticks per second by default = 10 microseconds per tick)
-        "ticks_per_second": 100_000,
+        # number of ticks per second (1000 ticks per second by default = 1 ms per tick)
+        "ticks_per_second": 1000,
 
         ### Workload Generation Params ###
         # how many seconds on average the dispatcher will wait between generating pipelines
@@ -182,17 +209,30 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     failure_error_counts = defaultdict(int)
     executor_results = []
     outstanding_pipelines: Dict[str, Pipeline] = {}
-    pipeline_latencies: List[int] = []
+    pipeline_arrivals_by_priority: Dict[Priority, int] = {
+        Priority.QUERY: 0,
+        Priority.INTERACTIVE: 0,
+        Priority.BATCH_PIPELINE: 0,
+    }
+    pipeline_latencies_by_priority: Dict[Priority, List[int]] = {
+        Priority.QUERY: [],
+        Priority.INTERACTIVE: [],
+        Priority.BATCH_PIPELINE: [],
+    }
 
     # IMPORTANT!  This is the main simulation loop.
     for tick_number in range(max_ticks):
         sim_formatter.set_simulated_elapsed_seconds(tick_number / ticks_per_second)
 
+        # track new work
         new_pipelines: List[Pipeline] = workload.run_one_tick()
         for p in new_pipelines:
             logger.info(f"Pipeline arrived with Priority {p.priority} and {len(p.values)} op(s)")
             p.runtime_status().record_arrival(tick_number)
             outstanding_pipelines[p.pipeline_id] = p
+            pipeline_arrivals_by_priority[p.priority] += 1
+
+        # simulate scheduler/executor
         suspensions, assignments = scheduler.run_one_tick(executor_results, new_pipelines)
         executor_results = executor.run_one_tick(suspensions, assignments)
 
@@ -200,19 +240,19 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         num_pipelines_created += len(new_pipelines)
         num_assignments += len(assignments)
         num_suspenions += len(suspensions)
-        # Count only failures
         failures = [r for r in executor_results if r.failed()]
         num_failures += len(failures)
         for failure in failures:
             failure_error_counts[failure.error] += 1
 
-        # Check for completed pipelines
+        # check for completed pipelines
         if executor_results:
             for pipeline_id in list(outstanding_pipelines.keys()):
                 pipeline = outstanding_pipelines[pipeline_id]
                 if pipeline.runtime_status().is_pipeline_successful():
                     pipeline.runtime_status().record_finish(tick_number)
-                    pipeline_latencies.append(pipeline.runtime_status().get_latency_ticks())
+                    latency_ticks = pipeline.runtime_status().get_latency_ticks()
+                    pipeline_latencies_by_priority[pipeline.priority].append(latency_ticks)
                     del outstanding_pipelines[pipeline_id]
 
     # TODO: better way to calculate work throuphput, going by num ops, etc. is
@@ -220,12 +260,22 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     throughput = executor.num_completed() / params['duration']
     p99 = np.percentile(executor.container_tick_times(), 99) / params["ticks_per_second"]
 
-    # Compute pipeline stats
-    if pipeline_latencies:
-        mean_latency_seconds = np.mean(pipeline_latencies) / ticks_per_second
-    else:
-        mean_latency_seconds = 0.0
-    pipelines_all = PipelineStats(mean_latency_seconds=mean_latency_seconds)
+    # Compute pipeline stats by category
+    all_arrivals = sum(pipeline_arrivals_by_priority.values())
+    all_latencies = sum(pipeline_latencies_by_priority.values(), [])
+    pipelines_all = compute_pipeline_stats(all_arrivals, all_latencies, ticks_per_second)
+    pipelines_query = compute_pipeline_stats(
+        pipeline_arrivals_by_priority[Priority.QUERY],
+        pipeline_latencies_by_priority[Priority.QUERY],
+        ticks_per_second)
+    pipelines_interactive = compute_pipeline_stats(
+        pipeline_arrivals_by_priority[Priority.INTERACTIVE],
+        pipeline_latencies_by_priority[Priority.INTERACTIVE],
+        ticks_per_second)
+    pipelines_batch = compute_pipeline_stats(
+        pipeline_arrivals_by_priority[Priority.BATCH_PIPELINE],
+        pipeline_latencies_by_priority[Priority.BATCH_PIPELINE],
+        ticks_per_second)
 
     return SimulatorStats(
         pipelines_created=num_pipelines_created,
@@ -237,4 +287,7 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         failures=num_failures,
         failure_error_counts=dict(failure_error_counts),
         pipelines_all=pipelines_all,
+        pipelines_query=pipelines_query,
+        pipelines_interactive=pipelines_interactive,
+        pipelines_batch=pipelines_batch,
     )
