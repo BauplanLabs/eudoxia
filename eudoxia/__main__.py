@@ -1,4 +1,6 @@
 import argparse
+import json
+import shutil
 import sys
 import tomllib
 import numpy as np
@@ -104,6 +106,74 @@ def gentrace_command(params_file, output_file, force=False):
             writer.write_row(row)
 
     print(f"Generated workload trace saved to {output_file}")
+
+
+def mkregression_command(params_file, target_dir, force=False):
+    """Create a regression test from a parameters file.
+
+    This command:
+    1. Creates the target directory
+    2. Copies the params.toml file
+    3. Generates a trace using gentrace
+    4. Runs the simulation to capture expected output
+    5. Writes expected.json with the results
+    """
+    params_path = Path(params_file)
+    target_path = Path(target_dir)
+
+    # Check if params file exists
+    if not params_path.exists():
+        print(f"Error: Parameters file '{params_file}' not found", file=sys.stderr)
+        sys.exit(1)
+
+    # Check if target directory already exists
+    if target_path.exists() and not force:
+        print(f"Error: Directory '{target_dir}' already exists. Use -f/--force to overwrite.", file=sys.stderr)
+        sys.exit(1)
+
+    # Create target directory
+    target_path.mkdir(parents=True, exist_ok=True)
+
+    # Copy params.toml
+    target_params = target_path / 'params.toml'
+    shutil.copy(params_path, target_params)
+    print(f"Copied {params_file} -> {target_params}")
+
+    # Load and parse parameters
+    with open(params_file, 'rb') as f:
+        params = tomllib.load(f)
+    params = parse_args_with_defaults(params)
+
+    # Generate trace
+    target_trace = target_path / 'trace.csv'
+    workload_gen = WorkloadGenerator(**params)
+    trace_generator = WorkloadTraceGenerator(
+        workload=workload_gen,
+        ticks_per_second=params['ticks_per_second'],
+        duration_secs=params['duration']
+    )
+    with open(target_trace, 'w') as f:
+        writer = CSVWorkloadWriter(f)
+        for row in trace_generator.generate_rows():
+            writer.write_row(row)
+    print(f"Generated trace -> {target_trace}")
+
+    # Run simulation with the trace to get expected output
+    with open(target_trace) as f:
+        reader = CSVWorkloadReader(f)
+        workload_trace = reader.get_workload(params['ticks_per_second'])
+        stats = run_simulator(params, workload=workload_trace)
+
+    # Write expected.json
+    target_expected = target_path / 'expected.json'
+    with open(target_expected, 'w') as f:
+        json.dump(stats.to_dict(), f, indent=2)
+    print(f"Wrote expected output -> {target_expected}")
+
+    print(f"\nRegression test created in {target_dir}/")
+    print(f"  params.toml  - scheduler configuration")
+    print(f"  trace.csv    - workload trace ({stats.pipelines_created} pipelines)")
+    print(f"  expected.json - expected results ({stats.pipelines_completed} completed, {stats.suspensions} suspensions)")
 
 
 SCHEDULER_TEMPLATE = '''\
@@ -250,6 +320,14 @@ def main(argv=None):
                             help='Create a starter scheduler file named NAME.py')
     init_parser.add_argument('-f', '--force', action='store_true', help='Overwrite existing files')
 
+    # Make-regression-test subcommand
+    regression_parser = subparsers.add_parser('make-regression-test',
+                                              help='Create a regression test from a parameters file')
+    regression_parser.add_argument('params_file', help='Path to TOML parameters file')
+    regression_parser.add_argument('target_dir', help='Directory to create the regression test in')
+    regression_parser.add_argument('-f', '--force', action='store_true',
+                                   help='Overwrite existing directory')
+
     # Tools command group
     tools_parser = subparsers.add_parser('tools', help='Workload manipulation and analysis tools')
     tools_subparsers = tools_parser.add_subparsers(dest='tool_command', help='Available tools')
@@ -312,6 +390,8 @@ def main(argv=None):
         gentrace_command(args.params_file, args.output_file, force=args.force)
     elif args.command == 'init':
         init_command(args.output_file, force=args.force, scheduler_name=args.scheduler)
+    elif args.command == 'mkregression':
+        make_regression_test_command(args.params_file, args.target_dir, force=args.force)
     elif args.command == 'tools':
         if args.tool_command == 'snap':
             snap_command(args.input_workload, args.output_file, args.ticks_per_second, force=args.force)
