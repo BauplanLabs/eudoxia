@@ -13,8 +13,8 @@ def test_retry_only_assigns_incomplete_operators(scheduler_algo):
     """When a container OOMs, only incomplete operators should be retried."""
     executor = Executor(
         num_pools=2,
-        cpu_pool=100,
-        ram_pool=1000,
+        cpus_per_pool=50,
+        ram_gb_per_pool=500,
         ticks_per_second=10,
         multi_operator_containers=True,
     )
@@ -34,8 +34,7 @@ def test_retry_only_assigns_incomplete_operators(scheduler_algo):
     first_assignment = assignments[0]
 
     # Simulate: op1 completes, then container fails
-    op1.transition(OperatorState.ASSIGNED)
-    op2.transition(OperatorState.ASSIGNED)
+    # (ops already transitioned to ASSIGNED when Assignment was created)
     op1.transition(OperatorState.RUNNING)
     op1.transition(OperatorState.COMPLETED)
     op2.transition(OperatorState.FAILED)
@@ -61,8 +60,8 @@ def test_resume_only_assigns_incomplete_operators(scheduler_algo):
     """When a container resumes after suspension, only incomplete operators should be assigned."""
     executor = Executor(
         num_pools=2,
-        cpu_pool=100,
-        ram_pool=1000,
+        cpus_per_pool=50,
+        ram_gb_per_pool=500,
         ticks_per_second=10,
         multi_operator_containers=True,
     )
@@ -81,12 +80,9 @@ def test_resume_only_assigns_incomplete_operators(scheduler_algo):
     first_assignment = assignments[0]
     pool_id = first_assignment.pool_id
 
-    # Create a container (this transitions ops to ASSIGNED)
+    # Create a container from the assignment (ops already transitioned to ASSIGNED)
     container = Container(
-        ram=first_assignment.ram,
-        cpu=first_assignment.cpu,
-        ops=[op1, op2],
-        prty=Priority.BATCH_PIPELINE,
+        assignment=first_assignment,
         pool_id=pool_id,
         ticks_per_second=10,
     )
@@ -104,10 +100,11 @@ def test_resume_only_assigns_incomplete_operators(scheduler_algo):
     # Scheduler sees suspending container, stores job
     suspensions, assignments = scheduler.run_one_tick([], [])
 
-    # Move container to suspended state
+    # Move container to suspended state (op2 transitions to PENDING when suspension completes)
     executor.pools[pool_id].suspending_containers.remove(container)
     container._is_suspending = False
     container._is_suspended = True
+    op2.transition(OperatorState.PENDING)  # Suspension complete, ready to be re-assigned
     executor.pools[pool_id].suspended_containers.append(container)
 
     # Scheduler sees suspended container, should only assign incomplete op2

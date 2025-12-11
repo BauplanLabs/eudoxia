@@ -1,5 +1,6 @@
 import pytest
 from eudoxia.executor.container import Container
+from eudoxia.executor.assignment import Assignment
 from eudoxia.workload.pipeline import Segment, Operator, Pipeline
 from eudoxia.utils import Priority, DISK_SCAN_GB_SEC
 
@@ -20,15 +21,12 @@ def test_container_oom():
         ops.append(op)
         prev_op = op
 
-    # Create container with limited RAM
-    container = Container(
-        ram=35,
-        cpu=10,
-        ops=ops,
-        prty=Priority.BATCH_PIPELINE,
-        pool_id=0,
-        ticks_per_second=1
+    # Create assignment and container with limited RAM
+    assignment = Assignment(
+        ops=ops, cpu=10, ram=35,
+        priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="oom_test"
     )
+    container = Container(assignment=assignment, pool_id=0, ticks_per_second=1)
 
     # Run the container to completion
     ticks_executed = 0
@@ -59,14 +57,11 @@ def test_container_oom_transitions_remaining_ops_to_failed():
     op_b.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=100))
     op_c.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=10))
 
-    container = Container(
-        ram=50,  # Not enough for op_a
-        cpu=10,
-        ops=[op_a, op_b, op_c],
-        prty=Priority.BATCH_PIPELINE,
-        pool_id=0,
-        ticks_per_second=10
+    assignment = Assignment(
+        ops=[op_a, op_b, op_c], cpu=10, ram=50,  # Not enough for op_b
+        priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="oom_fail_test"
     )
+    container = Container(assignment=assignment, pool_id=0, ticks_per_second=10)
 
     # Run until OOM
     while not container.is_completed():
@@ -95,14 +90,11 @@ def test_container_immediate_oom():
     ))
 
     # Create container with only 50GB RAM - immediate OOM
-    container = Container(
-        ram=50,  # Only 50GB available
-        cpu=10,
-        ops=[op],
-        prty=Priority.BATCH_PIPELINE,
-        pool_id=0,
-        ticks_per_second=10
+    assignment = Assignment(
+        ops=[op], cpu=10, ram=50,  # Only 50GB available
+        priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="immediate_oom_test"
     )
+    container = Container(assignment=assignment, pool_id=0, ticks_per_second=10)
 
     # Container is not yet completed - OOM detected on first tick
     assert not container.is_completed(), "Container should not be completed before first tick"
@@ -130,14 +122,11 @@ def test_container_suspension_ticks():
     ))
 
     # 100 ticks per second, so tick_length = 0.01 seconds
-    container = Container(
-        ram=100,  # 100GB RAM
-        cpu=10,
-        ops=[op],
-        prty=Priority.BATCH_PIPELINE,
-        pool_id=0,
-        ticks_per_second=100
+    assignment = Assignment(
+        ops=[op], cpu=10, ram=100,  # 100GB RAM
+        priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="suspend_test"
     )
+    container = Container(assignment=assignment, pool_id=0, ticks_per_second=100)
 
     # Trigger suspension
     container.suspend_container()
@@ -198,14 +187,11 @@ def test_container_memory_over_time():
         storage_read_gb=20,  # 20GB read at 20GB/sec = 1 sec I/O, peak memory = 20GB
     ))
 
-    container = Container(
-        ram=100,
-        cpu=1,  # 1 CPU so baseline_cpu_seconds = actual seconds
-        ops=[op1, op2],
-        prty=Priority.BATCH_PIPELINE,
-        pool_id=0,
-        ticks_per_second=10,
+    assignment = Assignment(
+        ops=[op1, op2], cpu=1, ram=100,  # 1 CPU so baseline_cpu_seconds = actual seconds
+        priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="memory_test"
     )
+    container = Container(assignment=assignment, pool_id=0, ticks_per_second=10)
 
     tick_length = 0.1  # 10 ticks/sec
     expected_memories = []

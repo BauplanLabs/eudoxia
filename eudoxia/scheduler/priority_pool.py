@@ -76,7 +76,7 @@ def priority_pool_scheduler(s, results: List[ExecutionResult],
             pipeline = ops[0].pipeline
             job = WaitingQueueJob(priority=c.priority, p=pipeline,
                                   ops=ops, pool_id=pool_id,
-                                  container_id=c.container_id, old_ram=c.ram, old_cpu=c.cpu,
+                                  container_id=c.container_id, old_ram=c.assignment.ram, old_cpu=c.assignment.cpu,
                                   error=c.error)
             # c.container_id is UUID type. must use it represented as an int to have
             # it act as key in python dict
@@ -178,8 +178,8 @@ def priority_pool_scheduler(s, results: List[ExecutionResult],
                 # The case for newly arrived jobs
                 else:
                     logger.info("NEW")
-                    job_cpu = int(pool_stats[pool_id]["total_cpu"] / 10)
-                    job_ram = int(pool_stats[pool_id]["total_ram"] / 10)
+                    job_cpu = max(1, int(pool_stats[pool_id]["total_cpu"] / 10))
+                    job_ram = max(1, int(pool_stats[pool_id]["total_ram"] / 10))
                     if job_cpu >= pool_stats[pool_id]["avail_cpu"] or job_ram >= pool_stats[pool_id]["avail_ram"]:
                         job_cpu = pool_stats[pool_id]["avail_cpu"]
                         job_ram = pool_stats[pool_id]["avail_ram"]

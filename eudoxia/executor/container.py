@@ -2,6 +2,7 @@ import logging
 from typing import List, Generator, Optional
 from eudoxia.utils import DISK_SCAN_GB_SEC, Priority
 from eudoxia.workload import Operator, OperatorState
+from eudoxia.executor.assignment import Assignment
 
 logger = logging.getLogger(__name__)
 
@@ -14,16 +15,13 @@ class Container:
     """
     next_container_num = 1
 
-    def __init__(self, ram, cpu, ops, prty: Priority, pool_id: int, ticks_per_second: int):
+    def __init__(self, assignment: Assignment, pool_id: int, ticks_per_second: int):
         self.container_id = f"c{Container.next_container_num}"
         Container.next_container_num += 1
+        self.assignment = assignment
         self.pool_id = pool_id
-        self.ram = ram
-        self.cpu = cpu
-        self.operators: List[Operator] = ops
         self.suspend_ticks = None
         self._suspend_ticks_left = None
-        self.priority = prty
         self.error: Optional[str] = None
         self.ticks_per_second = ticks_per_second
         self.tick_length_secs = 1.0 / ticks_per_second
@@ -36,12 +34,16 @@ class Container:
         # Index of current/next operator. Ops before this index are COMPLETED.
         self._current_op_idx: int = 0
 
-        # Transition all operators to ASSIGNED
-        for op in self.operators:
-            op.transition(OperatorState.ASSIGNED)
-
         # Start the generator
         self._tick_iter = self._tick_generator()
+
+    @property
+    def operators(self) -> List[Operator]:
+        return self.assignment.ops
+
+    @property
+    def priority(self) -> Priority:
+        return self.assignment.priority
 
     def get_pipeline_id(self):
         """Get the pipeline ID from operators, handling mixed pipelines"""
@@ -59,7 +61,7 @@ class Container:
 
     def __repr__(self):
         num_ops = len(self.operators)
-        return f"container={self.container_id} pipeline={self.get_pipeline_id()} ops={num_ops} cpus={self.cpu} ram_gb={self.ram}"
+        return f"container={self.container_id} pipeline={self.get_pipeline_id()} ops={num_ops} cpus={self.assignment.cpu} ram_gb={self.assignment.ram}"
 
     def _tick_generator(self) -> Generator[None, None, None]:
         """
@@ -86,7 +88,7 @@ class Container:
             for seg_idx, seg in enumerate(segments):
                 # Calculate ticks for I/O phase and CPU phase
                 io_secs = seg.get_io_seconds()
-                cpu_secs = seg.get_cpu_time(self.cpu)
+                cpu_secs = seg.get_cpu_time(self.assignment.cpu)
                 io_ticks = int(io_secs / self.tick_length_secs)
                 cpu_ticks = int(cpu_secs / self.tick_length_secs)
                 total_seg_ticks = io_ticks+cpu_ticks
@@ -104,7 +106,7 @@ class Container:
                         self._current_memory = seg.get_peak_memory_gb()
 
                     # have we OOM'd?
-                    if self._current_memory > self.ram:
+                    if self._current_memory > self.assignment.ram:
                         self.error = "OOM"
 
                         # if the current running op fails, the ops
@@ -169,7 +171,7 @@ class Container:
         Suspend container execution, free CPUs and RAM. Requires writing
         current data to disk.
         """
-        write_to_disk_secs = self.ram / DISK_SCAN_GB_SEC
+        write_to_disk_secs = self.assignment.ram / DISK_SCAN_GB_SEC
         write_to_disk_ticks = int(write_to_disk_secs / self.tick_length_secs)
         self.suspend_ticks = write_to_disk_ticks
         self._suspend_ticks_left = write_to_disk_ticks

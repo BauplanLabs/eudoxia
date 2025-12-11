@@ -1,5 +1,6 @@
 from typing import List, Tuple
 from eudoxia.workload import Pipeline, OperatorState
+from eudoxia.workload.runtime_status import ASSIGNABLE_STATES
 from eudoxia.executor.assignment import Assignment, ExecutionResult, Suspend
 from eudoxia.utils import Priority
 from .decorators import register_scheduler_init, register_scheduler
@@ -55,15 +56,14 @@ def naive_pipeline(s, results: List[ExecutionResult],
             # might be more work for later, after whatever we might do this round
             requeue_pipelines.append(pipeline)
 
-            # if our containers can run multiple ops, we send it everything at once;
-            # otherwise, just the first assignable op
+            # if our containers can run multiple ops, we send all assignable ops;
+            # otherwise, just the first assignable op with parents complete
             if s.multi_operator_containers:
-                op_list = list(pipeline.values)
-                assert op_list
+                op_list = pipeline.runtime_status().get_ops(ASSIGNABLE_STATES, require_parents_complete=False)
             else:
-                op_list = pipeline.runtime_status().get_assignable_ops()[:1]
-                if not op_list:
-                    continue # might be ready later
+                op_list = pipeline.runtime_status().get_ops(ASSIGNABLE_STATES, require_parents_complete=True)[:1]
+            if not op_list:
+                continue  # might be ready later
 
             # assign all resources of this pool/machine.  break out of
             # the inner loop, because we will therefore not be able to

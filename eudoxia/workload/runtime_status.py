@@ -1,11 +1,11 @@
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 
 class OperatorState(Enum):
     """States an operator can be in during execution"""
     PENDING = "pending"           # Not yet assigned, available for scheduling
-    ASSIGNED = "assigned"         # In a container, waiting for turn to execute
+    ASSIGNED = "assigned"         # Assignment object created containing this ops (container assignment is imminent)
     RUNNING = "running"           # Currently executing in a container
     SUSPENDING = "suspending"     # Container writing RAM to disk
     COMPLETED = "completed"       # Successfully finished (terminal state)
@@ -34,6 +34,12 @@ VALID_TRANSITIONS: Dict[OperatorState, List[OperatorState]] = {
         OperatorState.ASSIGNED,
     ],
 }
+
+# States from which an operator can be assigned (can transition to ASSIGNED)
+ASSIGNABLE_STATES = frozenset(
+    state for state, transitions in VALID_TRANSITIONS.items()
+    if OperatorState.ASSIGNED in transitions
+)
 
 
 class PipelineRuntimeStatus:
@@ -70,7 +76,7 @@ class PipelineRuntimeStatus:
         current_state = self.operator_states[operator]
 
         if new_state not in VALID_TRANSITIONS[current_state]:
-            return (False, f"Cannot transition from {current_state.value} to {new_state.value}")
+            return (False, f"Cannot transition operator {operator.id} in pipeline {operator.pipeline.pipeline_id} from {current_state.value} to {new_state.value}")
 
         # Dependencies checked when starting execution, not when assigning
         if new_state == OperatorState.RUNNING:
@@ -109,14 +115,30 @@ class PipelineRuntimeStatus:
         assert self.finish_tick is not None, "finish_tick not recorded"
         return self.finish_tick - self.arrival_tick
 
-    def get_assignable_ops(self) -> List['Operator']:
+    def get_ops(self, state: Union[OperatorState, List[OperatorState]], require_parents_complete: bool = False) -> List['Operator']:
         """
-        Get operators that can be assigned: can transition to ASSIGNED with all parents COMPLETED.
+        Get operators matching the given filter criteria.
+
+        Args:
+            state: Only include operators in this state (or one of these states if a list)
+            require_parents_complete: If True, only include operators whose parents are all COMPLETED
+
+        Returns:
+            List of operators matching the criteria
         """
-        assignable = []
-        for op, state in self.operator_states.items():
-            if OperatorState.ASSIGNED not in VALID_TRANSITIONS[state]:
+        # Normalize to a list for consistent checking
+        if isinstance(state, OperatorState):
+            allowed_states = [state]
+        else:
+            allowed_states = state
+
+        result = []
+        for op, op_state in self.operator_states.items():
+            if op_state not in allowed_states:
                 continue
-            if all(self.operator_states[p] == OperatorState.COMPLETED for p in op.parents):
-                assignable.append(op)
-        return assignable
+            if require_parents_complete and not all(
+                self.operator_states[p] == OperatorState.COMPLETED for p in op.parents
+            ):
+                continue
+            result.append(op)
+        return result

@@ -1,4 +1,5 @@
 from eudoxia.workload.pipeline import Pipeline, Operator, Segment
+from eudoxia.workload import OperatorState
 import uuid
 from eudoxia.utils import Priority
 from typing import List
@@ -52,7 +53,16 @@ class Assignment:
                           resources
     """
     def __init__(self, ops: List[Operator], cpu, ram, priority: Priority,
-                 pool_id: int, pipeline_id: str, container_id = None, is_resume=False, force_run = False): 
+                 pool_id: int, pipeline_id: str, container_id = None, is_resume=False, force_run = False):
+        assert len(ops) > 0, f"assignments cannot have zero operators"
+        assert cpu > 0, f"must assign positive CPU allocation, got {cpu}"
+        assert ram > 0, f"must assign positive RAM allocation, got {ram}"
+        # Transition operators to ASSIGNED immediately when the Assignment is created,
+        # rather than waiting for the Container to be created. This prevents schedulers
+        # from creating duplicate assignments for the same operator within a single tick
+        # (e.g., assigning the same op to multiple pools before the executor runs).
+        for op in ops:
+            op.transition(OperatorState.ASSIGNED)
         self.ops = ops
         self.cpu = cpu
         self.ram = ram
