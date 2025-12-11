@@ -26,6 +26,13 @@ def naive_pipeline(s, results: List[ExecutionResult],
             - List of containers to suspend (always empty for naive scheduler)
             - List of new assignments to provide to Executor
     """
+
+    # this scheduler doesn't make any new decisions unless there are
+    # new pipelines arriving or containers exiting, so exit fast in
+    # this case
+    if len(pipelines) == 0 and len(results) == 0:
+        return [], []
+    
     for p in pipelines:
         s.waiting_queue.append(p)
 

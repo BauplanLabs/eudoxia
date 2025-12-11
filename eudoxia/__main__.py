@@ -213,6 +213,10 @@ def {scheduler_name}_scheduler(s, results: List[ExecutionResult],
     for p in pipelines:
         s.waiting_queue.append(p)
 
+    # early exit if no state changes that affect our decisions
+    if not pipelines and not results:
+        return [], []
+
     suspensions = []
     assignments = []
     requeue_pipelines = []
