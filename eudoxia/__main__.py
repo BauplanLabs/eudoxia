@@ -178,7 +178,7 @@ def mkregression_command(params_file, target_dir, force=False):
 
 SCHEDULER_TEMPLATE = '''\
 from typing import List, Tuple
-from eudoxia.workload import Pipeline
+from eudoxia.workload import Pipeline, OperatorState
 from eudoxia.executor.assignment import Assignment, ExecutionResult, Suspend
 from eudoxia.scheduler.decorators import register_scheduler_init, register_scheduler
 
@@ -197,7 +197,7 @@ def {scheduler_name}_init(s):
 def {scheduler_name}_scheduler(s, results: List[ExecutionResult],
                    pipelines: List[Pipeline]) -> Tuple[List[Suspend], List[Assignment]]:
     """
-    A simple FIFO scheduler that allocates all resources of a pool to a single pipeline.
+    A simple FIFO scheduler that assigns one operator at a time per pool.
 
     Args:
         s: The scheduler instance (with access to s.executor, s.waiting_queue, etc.)
@@ -209,25 +209,33 @@ def {scheduler_name}_scheduler(s, results: List[ExecutionResult],
             - List of containers to suspend
             - List of new assignments to make
     """
-    # Add new pipelines to queue
     for p in pipelines:
         s.waiting_queue.append(p)
 
-    if len(s.waiting_queue) == 0:
-        return [], []
-
     suspensions = []
     assignments = []
+    requeue_pipelines = []
 
-    # Try to assign work to each pool
     for pool_id in range(s.executor.num_pools):
         pool = s.executor.pools[pool_id]
         avail_cpu = pool.avail_cpu_pool
         avail_ram = pool.avail_ram_pool
+        if avail_cpu <= 0 or avail_ram <= 0:
+            continue
 
-        if avail_cpu > 0 and avail_ram > 0 and s.waiting_queue:
+        while s.waiting_queue:
             pipeline = s.waiting_queue.pop(0)
-            op_list = list(pipeline.values)
+            status = pipeline.runtime_status()
+            has_failures = status.state_counts[OperatorState.FAILED] > 0
+            if status.is_pipeline_successful() or has_failures:
+                # don't retry failures; drop completed/failed pipelines
+                continue
+            requeue_pipelines.append(pipeline)
+
+            op_list = status.get_assignable_ops()[:1]
+            if not op_list:
+                continue
+
             assignment = Assignment(
                 ops=op_list,
                 cpu=avail_cpu,
@@ -237,7 +245,9 @@ def {scheduler_name}_scheduler(s, results: List[ExecutionResult],
                 pipeline_id=pipeline.pipeline_id
             )
             assignments.append(assignment)
+            break
 
+    s.waiting_queue.extend(requeue_pipelines)
     return suspensions, assignments
 '''
 
