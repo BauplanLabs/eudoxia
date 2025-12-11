@@ -72,7 +72,7 @@ def test_run_simulator_basic(scheduler_algo):
     # run simulator and check results
     stats = run_simulator(params, workload=workload)
     assert stats.pipelines_created == 3, f"{scheduler_algo}: Expected 3 created pipelines, got {stats.pipelines_created}"
-    assert stats.pipelines_completed == expected_completions, f"{scheduler_algo}: Expected {expected_completions} completed pipelines, got {stats.pipelines_completed}"
+    assert stats.containers_completed == expected_completions, f"{scheduler_algo}: Expected {expected_completions} completed containers, got {stats.containers_completed}"
 
 
 @pytest.mark.parametrize("ticks_per_second", [100_000, 10_000, 1_000, 100])  # 10us, 100us, 1ms, 10ms
@@ -110,7 +110,7 @@ def test_tick_length(ticks_per_second):
     # Verify: 10 jobs created, but only 4 complete in 4.9 seconds
     # (each job takes 1 second, and with 1 CPU they run sequentially)
     assert stats.pipelines_created == 10, f"Expected 10 pipelines created, got {stats.pipelines_created}"
-    assert stats.pipelines_completed == 4, f"Expected 4 pipelines completed, got {stats.pipelines_completed}"
+    assert stats.containers_completed == 4, f"Expected 4 containers completed, got {stats.containers_completed}"
 
 
 @pytest.mark.parametrize("scheduler_algo", ["priority", "priority-pool"])
@@ -144,7 +144,7 @@ def test_oom_retry(scheduler_algo):
 
     # Verify pipeline was created and eventually completed
     assert stats.pipelines_created == 1, f"{scheduler_algo}: Expected 1 pipeline created, got {stats.pipelines_created}"
-    assert stats.pipelines_completed == 1, f"{scheduler_algo}: Expected 1 pipeline completed after OOM retry, got {stats.pipelines_completed}"
+    assert stats.containers_completed == 1, f"{scheduler_algo}: Expected 1 container completed after OOM retry, got {stats.containers_completed}"
 
     # Verify retries happened: failures = assignments - 1 (last assignment succeeds)
     assert stats.assignments > 1, f"{scheduler_algo}: Expected multiple assignments (retries), got {stats.assignments}"

@@ -18,8 +18,9 @@ class Scheduler:
 
     # ''' The table of pre-implemented scheduling algorithms and corresponding
     # initialization functions'''
-    def __init__(self, executor: Executor, scheduler_algo):
+    def __init__(self, executor: Executor, scheduler_algo, **params):
         self.executor = executor
+        self.params = params
         if not scheduler_algo in SCHEDULING_ALGOS:
             options = sorted(SCHEDULING_ALGOS.keys())
             raise ValueError(f"Scheduler {repr(scheduler_algo)} not available.  Options: {repr(options)}'")
