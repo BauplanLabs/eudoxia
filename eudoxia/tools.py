@@ -280,7 +280,7 @@ def sensitivity_command(params_file, workload, output_dir, jitter_seed=None):
     # Write results to CSV
     output_csv = output_dir_path / "results.csv"
     with open(output_csv, 'w', newline='') as f:
-        fieldnames = ['mutation_type', 'ticks_per_second', 'pipelines_created', 'pipelines_completed',
+        fieldnames = ['mutation_type', 'ticks_per_second', 'pipelines_created', 'containers_completed',
                      'throughput', 'p99_latency', 'assignments', 'suspensions', 'failures', 'failure_error_counts']
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -468,7 +468,7 @@ def sensitivity_analysis_plot_command(results_dir):
     df = pd.read_csv(results_csv)
 
     # Metrics to plot
-    metrics = ['pipelines_created', 'pipelines_completed', 'throughput',
+    metrics = ['pipelines_created', 'containers_completed', 'throughput',
                'p99_latency', 'assignments', 'suspensions', 'failures']
 
     # Find the baseline: tick mutation at max ticks_per_second

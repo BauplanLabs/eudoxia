@@ -69,7 +69,11 @@ def compute_pipeline_stats(arrival_count: int, latencies: List[int], ticks_per_s
 class SimulatorStats(NamedTuple):
     """Statistics returned from a simulator run"""
     pipelines_created: int
-    pipelines_completed: int
+    containers_completed: int
+
+    # TODO: rename some of these to clarify which are container vs. pipeline stats.
+    # Originally, there was a 1-to-1 correspondance between containers and pipelines,
+    # but now we need to be more careful.
     throughput: float
     p99_latency: float
     assignments: int
@@ -85,7 +89,7 @@ class SimulatorStats(NamedTuple):
         """Convert to dictionary for JSON serialization."""
         return {
             'pipelines_created': self.pipelines_created,
-            'pipelines_completed': self.pipelines_completed,
+            'containers_completed': self.containers_completed,
             'throughput': self.throughput,
             'p99_latency': self.p99_latency,
             'assignments': self.assignments,
@@ -305,7 +309,7 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
 
     return SimulatorStats(
         pipelines_created=num_pipelines_created,
-        pipelines_completed=executor.num_completed(),
+        containers_completed=executor.num_completed(),
         throughput=throughput,
         p99_latency=p99,
         assignments=num_assignments,

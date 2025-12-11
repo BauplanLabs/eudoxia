@@ -46,7 +46,7 @@ def run_command(params_file, workload=None):
 
     print(f"Simulation completed:")
     print(f"  Pipelines created: {stats.pipelines_created}")
-    print(f"  Pipelines completed: {stats.pipelines_completed}")
+    print(f"  Containers completed: {stats.containers_completed}")
     print(f"  Container throughput: {stats.throughput:.2f} containers/sec")
     print(f"  Container P99 latency: {stats.p99_latency:.2f}s")
     print(f"  Assignments: {stats.assignments}")
@@ -173,7 +173,7 @@ def mkregression_command(params_file, target_dir, force=False):
     print(f"\nRegression test created in {target_dir}/")
     print(f"  params.toml  - scheduler configuration")
     print(f"  trace.csv    - workload trace ({stats.pipelines_created} pipelines)")
-    print(f"  expected.json - expected results ({stats.pipelines_completed} completed, {stats.suspensions} suspensions)")
+    print(f"  expected.json - expected results ({stats.containers_completed} containers completed, {stats.suspensions} suspensions)")
 
 
 SCHEDULER_TEMPLATE = '''\
@@ -391,7 +391,7 @@ def main(argv=None):
     elif args.command == 'init':
         init_command(args.output_file, force=args.force, scheduler_name=args.scheduler)
     elif args.command == 'mkregression':
-        make_regression_test_command(args.params_file, args.target_dir, force=args.force)
+        mkregression_command(args.params_file, args.target_dir, force=args.force)
     elif args.command == 'tools':
         if args.tool_command == 'snap':
             snap_command(args.input_workload, args.output_file, args.ticks_per_second, force=args.force)

@@ -1,6 +1,6 @@
 {
   "pipelines_created": 252,
-  "pipelines_completed": 41,
+  "containers_completed": 41,
   "throughput": 0.06833333333333333,
   "p99_latency": 22.5,
   "assignments": 42,

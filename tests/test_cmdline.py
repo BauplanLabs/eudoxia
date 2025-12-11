@@ -24,7 +24,7 @@ class TestCommandLine(unittest.TestCase):
             })()
             mock_run.return_value = type('Stats', (), {
                 'pipelines_created': 5,
-                'pipelines_completed': 3,
+                'containers_completed': 3,
                 'throughput': 1.5,
                 'p99_latency': 0.1,
                 'assignments': 8,
@@ -74,7 +74,7 @@ class TestCommandLine(unittest.TestCase):
             })()
             mock_run.return_value = type('Stats', (), {
                 'pipelines_created': 1,
-                'pipelines_completed': 1,
+                'containers_completed': 1,
                 'throughput': 10.0,
                 'p99_latency': 0.05,
                 'assignments': 2,

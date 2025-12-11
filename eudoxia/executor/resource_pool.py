@@ -98,20 +98,12 @@ class ResourcePool:
         if len(assignments) > 0:
             self.verify_valid_assignment(assignments)
             for a in assignments:
-                # Validate multi-operator containers
-                if not self.multi_operator_containers and len(a.ops) > 1:
-                    result = ExecutionResult(
-                        ops=a.ops,
-                        cpu=a.cpu,
-                        ram=a.ram,
-                        priority=a.priority,
-                        pool_id=self.pool_id,
-                        container_id=None,
-                        error="multi"
-                    )
-                    results.append(result)
-                    logger.error(f"Assignment validation failed: multiple operators not allowed")
-                    continue
+                # Validate operator count
+                if self.multi_operator_containers:
+                    assert len(a.ops) >= 1, "Assignment must have at least 1 operator"
+                else:
+                    assert len(a.ops) == 1, \
+                        "Assignment must have exactly 1 operator when multi_operator_containers is False"
 
                 # Create container (transitions ops to ASSIGNED, then RUNNING as they execute)
                 logger.info(f"start container ram={a.ram} cpu={a.cpu} ops={len(a.ops)} priority={a.priority} pool_id={self.pool_id} pipeline_id={a.pipeline_id}")
