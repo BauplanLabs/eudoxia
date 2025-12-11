@@ -320,8 +320,8 @@ def main(argv=None):
                             help='Create a starter scheduler file named NAME.py')
     init_parser.add_argument('-f', '--force', action='store_true', help='Overwrite existing files')
 
-    # Make-regression-test subcommand
-    regression_parser = subparsers.add_parser('make-regression-test',
+    # mkregression subcommand
+    regression_parser = subparsers.add_parser('mkregression',
                                               help='Create a regression test from a parameters file')
     regression_parser.add_argument('params_file', help='Path to TOML parameters file')
     regression_parser.add_argument('target_dir', help='Directory to create the regression test in')
