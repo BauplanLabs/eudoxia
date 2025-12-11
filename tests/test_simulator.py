@@ -41,6 +41,8 @@ def test_run_simulator_basic(scheduler_algo):
     params['ticks_per_second'] = 1000
     if scheduler_algo == "priority-pool":
         params['num_pools'] = 2  # priority-pool scheduler requires 2 pools
+    elif scheduler_algo == "naive":
+        params['num_pools'] = 1  # naive runs one job at a time per pool
 
     # simple workload with 3 jobs
     pipelines = []
@@ -85,7 +87,8 @@ def test_tick_length(ticks_per_second):
     params.update({
         'scheduler_algo': 'naive',
         'num_pools': 1,
-        'cpu_pool': 1,  # Only 1 CPU so jobs run sequentially
+        'cpus_per_pool': 1,  # Only 1 CPU so jobs run sequentially
+        'ram_gb_per_pool': 64,
         'duration': 4.9,  # 4.9 seconds - should allow only 4 jobs to complete
         'ticks_per_second': ticks_per_second,
     })
@@ -121,8 +124,8 @@ def test_oom_retry(scheduler_algo):
     # Configure with limited resources
     params = get_param_defaults()
     params['scheduler_algo'] = scheduler_algo
-    params['ram_pool'] = 100  # 100 GB RAM total
-    params['cpu_pool'] = 8
+    params['ram_gb_per_pool'] = 100
+    params['cpus_per_pool'] = 8
     params['duration'] = 10.0
     params['ticks_per_second'] = 1000
     if scheduler_algo == "priority-pool":

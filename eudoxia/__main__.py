@@ -179,6 +179,7 @@ def mkregression_command(params_file, target_dir, force=False):
 SCHEDULER_TEMPLATE = '''\
 from typing import List, Tuple
 from eudoxia.workload import Pipeline, OperatorState
+from eudoxia.workload.runtime_status import ASSIGNABLE_STATES
 from eudoxia.executor.assignment import Assignment, ExecutionResult, Suspend
 from eudoxia.scheduler.decorators import register_scheduler_init, register_scheduler
 
@@ -232,7 +233,7 @@ def {scheduler_name}_scheduler(s, results: List[ExecutionResult],
                 continue
             requeue_pipelines.append(pipeline)
 
-            op_list = status.get_assignable_ops()[:1]
+            op_list = status.get_ops(ASSIGNABLE_STATES, require_parents_complete=True)[:1]
             if not op_list:
                 continue
 

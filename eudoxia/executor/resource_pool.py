@@ -105,10 +105,9 @@ class ResourcePool:
                     assert len(a.ops) == 1, \
                         "Assignment must have exactly 1 operator when multi_operator_containers is False"
 
-                # Create container (transitions ops to ASSIGNED, then RUNNING as they execute)
+                # Create container from assignment (ops already transitioned to ASSIGNED)
                 logger.info(f"start container ram={a.ram} cpu={a.cpu} ops={len(a.ops)} priority={a.priority} pool_id={self.pool_id} pipeline_id={a.pipeline_id}")
-                container = Container(ram=a.ram, cpu=a.cpu, ops=a.ops,
-                                      prty=a.priority, pool_id=self.pool_id,
+                container = Container(assignment=a, pool_id=self.pool_id,
                                       ticks_per_second=self.ticks_per_second)
                 self.avail_cpu_pool -= a.cpu
                 self.avail_ram_pool -= a.ram
@@ -118,8 +117,8 @@ class ResourcePool:
         for c in self.suspending_containers:
             c.suspend_container_tick()
             if c.is_suspended():
-                self.avail_cpu_pool += c.cpu
-                self.avail_ram_pool += c.ram
+                self.avail_cpu_pool += c.assignment.cpu
+                self.avail_ram_pool += c.assignment.ram
                 to_remove.append(c)
         for c in to_remove:
             self.suspending_containers.remove(c)
@@ -129,15 +128,15 @@ class ResourcePool:
         for c in self.active_containers:
             c.tick()
             if c.is_completed():
-                self.avail_cpu_pool += c.cpu
-                self.avail_ram_pool += c.ram
+                self.avail_cpu_pool += c.assignment.cpu
+                self.avail_ram_pool += c.assignment.ram
                 to_remove.append(c)
 
                 if c.error is None:
                     self.num_completed += 1
 
                 # Create an ExecutionResult for every completed container
-                result = ExecutionResult(ops=c.operators, cpu=c.cpu, ram=c.ram,
+                result = ExecutionResult(ops=c.operators, cpu=c.assignment.cpu, ram=c.assignment.ram,
                                         priority=c.priority, pool_id=c.pool_id,
                                         container_id=c.container_id, error=c.error)
                 logger.info(result)

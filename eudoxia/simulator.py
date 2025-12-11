@@ -111,7 +111,7 @@ def get_param_defaults() -> Dict:
     """
     return {
         # how long the simulation will run in seconds
-        "duration": 60,
+        "duration": 600,
         # number of ticks per second (1000 ticks per second by default = 1 ms per tick)
         "ticks_per_second": 1000,
 
@@ -137,15 +137,15 @@ def get_param_defaults() -> Dict:
 
         ### Executor Params ###
         # number of resource pools for executors
-        "num_pools": 1,
-        # number of CPUs or vCPUs
-        "cpu_pool": 64,
-        # GB in RAM pool
-        "ram_pool": 500,
+        "num_pools": 8,
+        # number of CPUs or vCPUs per pool
+        "cpus_per_pool": 64,
+        # GB of RAM per pool
+        "ram_gb_per_pool": 256,
         # allow multiple operators in single container
         "multi_operator_containers": True,
         # random seed for workload generation
-        "random_seed": 10,
+        "random_seed": 42,
     }
 
 def parse_args_with_defaults(params: Dict) -> Dict:
