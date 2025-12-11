@@ -183,7 +183,7 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         workload = WorkloadGenerator(**params)
 
     executor = Executor(**params)
-    scheduler = Scheduler(executor, scheduler_algo=params["scheduler_algo"])
+    scheduler = Scheduler(executor, **params)
 
     # Set up custom logging with elapsed time
     ticks_per_second = params["ticks_per_second"]

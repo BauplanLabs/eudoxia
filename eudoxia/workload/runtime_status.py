@@ -108,3 +108,15 @@ class PipelineRuntimeStatus:
         assert self.arrival_tick is not None, "arrival_tick not recorded"
         assert self.finish_tick is not None, "finish_tick not recorded"
         return self.finish_tick - self.arrival_tick
+
+    def get_assignable_ops(self) -> List['Operator']:
+        """
+        Get operators that can be assigned: can transition to ASSIGNED with all parents COMPLETED.
+        """
+        assignable = []
+        for op, state in self.operator_states.items():
+            if OperatorState.ASSIGNED not in VALID_TRANSITIONS[state]:
+                continue
+            if all(self.operator_states[p] == OperatorState.COMPLETED for p in op.parents):
+                assignable.append(op)
+        return assignable
