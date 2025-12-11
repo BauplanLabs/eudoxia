@@ -39,6 +39,15 @@ class PipelineStats(NamedTuple):
     mean_latency_seconds: float
     p99_latency_seconds: float
 
+    def to_dict(self) -> Dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            'arrival_count': self.arrival_count,
+            'completion_count': self.completion_count,
+            'mean_latency_seconds': self.mean_latency_seconds,
+            'p99_latency_seconds': self.p99_latency_seconds,
+        }
+
 
 def compute_pipeline_stats(arrival_count: int, latencies: List[int], ticks_per_second: int) -> PipelineStats:
     """Compute PipelineStats from arrival count and list of latency ticks."""
@@ -71,6 +80,23 @@ class SimulatorStats(NamedTuple):
     pipelines_query: PipelineStats
     pipelines_interactive: PipelineStats
     pipelines_batch: PipelineStats
+
+    def to_dict(self) -> Dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            'pipelines_created': self.pipelines_created,
+            'pipelines_completed': self.pipelines_completed,
+            'throughput': self.throughput,
+            'p99_latency': self.p99_latency,
+            'assignments': self.assignments,
+            'suspensions': self.suspensions,
+            'failures': self.failures,
+            'failure_error_counts': self.failure_error_counts,
+            'pipelines_all': self.pipelines_all.to_dict(),
+            'pipelines_query': self.pipelines_query.to_dict(),
+            'pipelines_interactive': self.pipelines_interactive.to_dict(),
+            'pipelines_batch': self.pipelines_batch.to_dict(),
+        }
 
 def get_param_defaults() -> Dict:
     """
