@@ -11,11 +11,61 @@ To create a new regression test, use:
   eudoxia make-regression-test <params.toml> <target_dir>
 """
 import json
+import math
 import pytest
 from pathlib import Path
 from eudoxia.simulator import run_simulator, parse_args_with_defaults
 from eudoxia.workload.csv_io import CSVWorkloadReader
 import tomllib
+
+
+def dict_diff(expected, actual, path=""):
+    """
+    Recursively compare two dicts and return a list of differences.
+
+    For floats, uses math.isclose for comparison.
+    Returns a list of human-readable difference strings.
+    """
+    differences = []
+
+    # Check if both are dicts
+    if not isinstance(expected, dict) or not isinstance(actual, dict):
+        if expected != actual:
+            differences.append(f"{path}: expected {expected!r}, got {actual!r}")
+        return differences
+
+    expected_keys = set(expected.keys())
+    actual_keys = set(actual.keys())
+
+    # Keys only in expected
+    for key in expected_keys - actual_keys:
+        key_path = f"{path}.{key}" if path else key
+        differences.append(f"{key_path}: missing in actual (expected {expected[key]!r})")
+
+    # Keys only in actual
+    for key in actual_keys - expected_keys:
+        key_path = f"{path}.{key}" if path else key
+        differences.append(f"{key_path}: unexpected key in actual (got {actual[key]!r})")
+
+    # Keys in both - compare values
+    for key in expected_keys & actual_keys:
+        key_path = f"{path}.{key}" if path else key
+        exp_val = expected[key]
+        act_val = actual[key]
+
+        if isinstance(exp_val, dict) and isinstance(act_val, dict):
+            # Recurse for nested dicts
+            differences.extend(dict_diff(exp_val, act_val, key_path))
+        elif isinstance(exp_val, float) and isinstance(act_val, float):
+            # Use math.isclose for floats, handle nan specially
+            if math.isnan(exp_val) and math.isnan(act_val):
+                pass  # Both nan is considered equal
+            elif not math.isclose(exp_val, act_val):
+                differences.append(f"{key_path}: expected {exp_val}, got {act_val}")
+        elif exp_val != act_val:
+            differences.append(f"{key_path}: expected {exp_val!r}, got {act_val!r}")
+
+    return differences
 
 
 # Find all regression test directories
@@ -72,9 +122,11 @@ def test_regression(test_name):
     # Convert to dict for comparison
     actual = stats.to_dict()
 
-    # TODO: Add more detailed error messages showing which fields differ
-    assert actual == expected, (
-        f"Regression test '{test_name}' failed\n"
-        f"Expected:\n{json.dumps(expected, indent=2)}\n"
-        f"Actual:\n{json.dumps(actual, indent=2)}"
-    )
+    # Get detailed diff for error message
+    differences = dict_diff(expected, actual)
+    if differences:
+        diff_msg = "\n".join(f"  - {d}" for d in differences)
+        pytest.fail(
+            f"Regression test '{test_name}' failed\n"
+            f"Differences:\n{diff_msg}"
+        )

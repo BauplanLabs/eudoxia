@@ -5,7 +5,7 @@ from eudoxia.workload import Pipeline, Operator, OperatorState
 from eudoxia.executor.assignment import Assignment, ExecutionResult, Suspend
 from eudoxia.utils import Priority
 from .decorators import register_scheduler_init, register_scheduler
-from .waiting_queue import WaitingQueueJob
+from .waiting_queue import WaitingQueueJob, RetryStats
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +57,14 @@ def priority_pool_scheduler(s, results: List[ExecutionResult],
 
         # Get pipeline from the first operator
         pipeline = ops[0].pipeline
-        job = WaitingQueueJob(priority=f.priority, p=pipeline, ops=ops,
-                              container_id=f.container_id, pool_id=f.pool_id, old_ram=f.ram, old_cpu=f.cpu,
-                              error=f.error)
+        retry_stats = RetryStats(
+            old_ram=f.ram,
+            old_cpu=f.cpu,
+            error=f.error,
+            container_id=f.container_id,
+            pool_id=f.pool_id,
+        )
+        job = WaitingQueueJob(priority=f.priority, p=pipeline, ops=ops, retry_stats=retry_stats)
         if f.priority == Priority.QUERY:
             s.qry_jobs.append(job)
         elif f.priority == Priority.INTERACTIVE:
@@ -74,10 +79,14 @@ def priority_pool_scheduler(s, results: List[ExecutionResult],
             assert ops, "suspended container has no incomplete operators"
             # Get pipeline from the first operator
             pipeline = ops[0].pipeline
-            job = WaitingQueueJob(priority=c.priority, p=pipeline,
-                                  ops=ops, pool_id=pool_id,
-                                  container_id=c.container_id, old_ram=c.assignment.ram, old_cpu=c.assignment.cpu,
-                                  error=c.error)
+            retry_stats = RetryStats(
+                old_ram=c.assignment.ram,
+                old_cpu=c.assignment.cpu,
+                error=c.error,
+                container_id=c.container_id,
+                pool_id=pool_id,
+            )
+            job = WaitingQueueJob(priority=c.priority, p=pipeline, ops=ops, retry_stats=retry_stats)
             # c.container_id is UUID type. must use it represented as an int to have
             # it act as key in python dict
             s.suspending[c.container_id] = job
@@ -139,11 +148,12 @@ def priority_pool_scheduler(s, results: List[ExecutionResult],
                 op_list = job.ops
 
 
+                rs = job.retry_stats
                 # i.e. OOM error
-                if job.error is not None:
+                if rs is not None and rs.error is not None:
                     logger.info("OOM")
-                    job_cpu = 2*job.old_cpu
-                    job_ram = 2*job.old_ram
+                    job_cpu = 2 * rs.old_cpu
+                    job_ram = 2 * rs.old_ram
                     cpu_ratio = job_cpu / pool_stats[pool_id]["total_cpu"]
                     ram_ratio = job_ram / pool_stats[pool_id]["total_ram"]
                     if cpu_ratio >= 0.5 or ram_ratio >= 0.5:
@@ -161,12 +171,12 @@ def priority_pool_scheduler(s, results: List[ExecutionResult],
                 # If old_cpu is not None, this job was run previously. However,
                 # if it is here, it didn't have an error. Thus it must've been
                 # pre-empted earlier by a higher priority job
-                elif job.old_cpu is not None and (job.old_cpu <= pool_stats[pool_id]["avail_cpu"] and
-                                                job.old_ram <= pool_stats[pool_id]["avail_ram"]):
+                elif rs is not None and (rs.old_cpu <= pool_stats[pool_id]["avail_cpu"] and
+                                         rs.old_ram <= pool_stats[pool_id]["avail_ram"]):
                     logger.info("PREEMPT")
-                    job_cpu = job.old_cpu
-                    job_ram = job.old_ram
-                    # can be == instead of >= as we checked <= in elif 
+                    job_cpu = rs.old_cpu
+                    job_ram = rs.old_ram
+                    # can be == instead of >= as we checked <= in elif
                     if job_cpu == pool_stats[pool_id]["avail_cpu"] or job_ram == pool_stats[pool_id]["avail_ram"]:
                         job_cpu = pool_stats[pool_id]["avail_cpu"]
                         job_ram = pool_stats[pool_id]["avail_ram"]
