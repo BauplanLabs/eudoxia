@@ -18,7 +18,7 @@ def test_retry_only_assigns_incomplete_operators(scheduler_algo):
         ticks_per_second=10,
         multi_operator_containers=True,
     )
-    scheduler = Scheduler(executor, scheduler_algo=scheduler_algo)
+    scheduler = Scheduler(executor, scheduler_algo=scheduler_algo, multi_operator_containers=True)
 
     # Pipeline with 2 ops
     pipeline = Pipeline("test", Priority.BATCH_PIPELINE)
@@ -65,7 +65,7 @@ def test_resume_only_assigns_incomplete_operators(scheduler_algo):
         ticks_per_second=10,
         multi_operator_containers=True,
     )
-    scheduler = Scheduler(executor, scheduler_algo=scheduler_algo)
+    scheduler = Scheduler(executor, scheduler_algo=scheduler_algo, multi_operator_containers=True)
 
     # Pipeline with 2 ops
     pipeline = Pipeline("test", Priority.BATCH_PIPELINE)

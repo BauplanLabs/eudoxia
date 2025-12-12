@@ -2,19 +2,27 @@ from typing import List, Tuple, Dict
 import uuid
 import logging
 from eudoxia.workload import Pipeline, Operator, OperatorState
+from eudoxia.workload.runtime_status import ASSIGNABLE_STATES
 from eudoxia.executor.assignment import Assignment, ExecutionResult, Suspend
 from eudoxia.utils import Priority
 from .decorators import register_scheduler_init, register_scheduler
-from .waiting_queue import WaitingQueueJob
+from .waiting_queue import WaitingQueueJob, RetryStats
 
 logger = logging.getLogger(__name__)
 
 
 @register_scheduler_init(key="priority")
-def init_priority_scheduler(s): 
+def init_priority_scheduler(s):
+    s.multi_operator_containers = s.params["multi_operator_containers"]
+
     s.qry_jobs: List[WaitingQueueJob]   = [] # high
     s.interactive_jobs: List[WaitingQueueJob] = [] # medium 
     s.batch_ppln_jobs: List[WaitingQueueJob]  = [] # low
+    s.queues_by_prio = {
+        Priority.QUERY: s.qry_jobs,
+        Priority.INTERACTIVE: s.interactive_jobs,
+        Priority.BATCH_PIPELINE: s.batch_ppln_jobs,
+    }
 
     s.suspending: Dict[uuid.UUID, WaitingQueueJob] = {}
     s.oom_failed_to_run = 0
@@ -45,63 +53,85 @@ def priority_scheduler(s, results: List[ExecutionResult],
             - List of containers to suspend (for preemption of lower priority jobs)
             - List of new assignments to provide to Executor
     """
-    # Add new pipelines to appropriate queues
-    for p in pipelines:
-        ops = list(p.values)
-        job = WaitingQueueJob(priority=p.priority, p=p, ops=ops)
-        if p.priority == Priority.QUERY:
-            s.qry_jobs.append(job)
-        elif p.priority == Priority.INTERACTIVE:
-            s.interactive_jobs.append(job)
-        elif p.priority == Priority.BATCH_PIPELINE:
-            s.batch_ppln_jobs.append(job)
+    # Collect all pipelines that need processing: new arrivals + pipelines with status changes
+    pipelines_to_process = {p.pipeline_id: p for p in pipelines}
+    for r in results:
+        for op in r.ops:
+            pipelines_to_process[op.pipeline.pipeline_id] = op.pipeline
 
-    # Filter results to get only failures
-    failures = [r for r in results if r.failed()]
+    # Build retry info from failed results
+    retry_info = {}
+    for r in results:
+        if r.failed():
+            for op in r.ops:
+                if op.state() != OperatorState.COMPLETED:
+                    retry_info[op.id] = RetryStats(
+                        old_ram=r.ram,
+                        old_cpu=r.cpu,
+                        error=r.error,
+                        container_id=r.container_id,
+                        pool_id=r.pool_id,
+                    )
 
-    for f in failures:
-        # Filter out completed operators
-        ops = [op for op in f.ops if op.state() != OperatorState.COMPLETED]
-        assert ops, "failed container has no incomplete operators"
-        # Get pipeline from the first operator
-        pipeline = ops[0].pipeline
-        job = WaitingQueueJob(priority=f.priority, p=pipeline, ops=ops,
-                              container_id=f.container_id, pool_id=f.pool_id, old_ram=f.ram, old_cpu=f.cpu,
-                              error=f.error)
-        if f.priority == Priority.QUERY:
-            s.qry_jobs.append(job)
-        elif f.priority == Priority.INTERACTIVE:
-            s.interactive_jobs.append(job)
-        elif f.priority == Priority.BATCH_PIPELINE:
-            s.batch_ppln_jobs.append(job)
+    # Queue new work as necessary
+    if pipelines_to_process:
+        # identify work already queued (so we can avoid double queueing later)
+        already_queued = set()
+        for queue in s.queues_by_prio.values():
+            for job in queue:
+                for op in job.ops:
+                    already_queued.add(op.id)
 
+        # break ready, non-queued work into distinct jobs, based on multi_operator_containers settings
+        jobs = []
+        for pipeline in pipelines_to_process.values():
+            # identify any ops we need to queue now based pipeline arrivals/changes
+            if s.multi_operator_containers:
+                op_list = pipeline.runtime_status().get_ops(ASSIGNABLE_STATES, require_parents_complete=False)
+            else:
+                op_list = pipeline.runtime_status().get_ops(ASSIGNABLE_STATES, require_parents_complete=True)
+            op_list = [op for op in op_list if op.id not in already_queued]
+            if len(op_list) == 0:
+                continue
+            if s.multi_operator_containers:
+                # For multi-op, use retry info from first op if any
+                retry_stats = retry_info.get(op_list[0].id)
+                jobs.append(WaitingQueueJob(priority=pipeline.priority, p=pipeline, ops=op_list, retry_stats=retry_stats))
+            else:
+                for op in op_list:
+                    retry_stats = retry_info.get(op.id)
+                    jobs.append(WaitingQueueJob(priority=pipeline.priority, p=pipeline, ops=[op], retry_stats=retry_stats))
+
+        # select queue for job based on priority
+        for job in jobs:
+            s.queues_by_prio[job.pipeline.priority].append(job)
+
+    # suspending containers
     for pool_id in range(s.executor.num_pools):
         for c in s.executor.pools[pool_id].suspending_containers:
             # Filter out completed operators
             ops = [op for op in c.operators if op.state() != OperatorState.COMPLETED]
-            assert ops, "failed container has no incomplete operators"
+            assert ops, "suspending container has no incomplete operators"
 
             # Get pipeline from the first operator
             pipeline = ops[0].pipeline
-            job = WaitingQueueJob(priority=c.priority, p=pipeline,
-                                  ops=ops, pool_id=pool_id,
-                                  container_id=c.container_id, old_ram=c.assignment.ram, old_cpu=c.assignment.cpu,
-                                  error=c.error)
+            retry_stats = RetryStats(
+                old_ram=c.assignment.ram,
+                old_cpu=c.assignment.cpu,
+                error=c.error,
+                container_id=c.container_id,
+                pool_id=pool_id,
+            )
+            job = WaitingQueueJob(priority=c.priority, p=pipeline, ops=ops, retry_stats=retry_stats)
             # Store job by container_id
             s.suspending[c.container_id] = job
-
     for pool_id in range(s.executor.num_pools):
         for container in s.executor.pools[pool_id].suspended_containers:
             if container.container_id in s.suspending:
-                job = s.suspending[container.container_id]
-                if job.priority == Priority.QUERY:
-                    s.qry_jobs.append(job)
-                elif job.priority == Priority.INTERACTIVE:
-                    s.interactive_jobs.append(job)
-                elif job.priority == Priority.BATCH_PIPELINE:
-                    s.batch_ppln_jobs.append(job)
-                del s.suspending[container.container_id]
+                job = s.suspending.pop(container.container_id)
+                s.queues_by_prio[job.priority].append(job)
 
+    # resource stats per pool/machine
     pool_stats = {}
     for i in range(s.executor.num_pools):
         # Current available resources to ensure we do not overallocate
@@ -114,9 +144,9 @@ def priority_scheduler(s, results: List[ExecutionResult],
         # track current resource values for each pool
         pool_stats[i] = {
                           "avail_cpu": avail_cpu_pool,
-                          "avail_ram": avail_ram_pool, 
+                          "avail_ram": avail_ram_pool,
                           "total_cpu": total_cpu_pool,
-                          "total_ram": total_ram_pool, 
+                          "total_ram": total_ram_pool,
                         }
 
     # order of these queues is VERY IMPORTANT: must go in order of
@@ -143,11 +173,12 @@ def priority_scheduler(s, results: List[ExecutionResult],
             to_remove.append(job)
             op_list = job.ops
 
+            rs = job.retry_stats
             # is this job placed in the queue because it previously failed,
             # i.e. OOM error
-            if job.error is not None:
-                job_cpu = 2*job.old_cpu
-                job_ram = 2*job.old_ram
+            if rs is not None and rs.error is not None:
+                job_cpu = 2 * rs.old_cpu
+                job_ram = 2 * rs.old_ram
                 if job_cpu > pool_stats[pool_id]["avail_cpu"] or job_ram > pool_stats[pool_id]["avail_ram"]:
                     continue
                 cpu_ratio = job_cpu / pool_stats[pool_id]["total_cpu"]
@@ -156,7 +187,7 @@ def priority_scheduler(s, results: List[ExecutionResult],
                     s.oom_failed_to_run += 1
                     continue
                 asgmnt = Assignment(ops=op_list, cpu=job_cpu, ram=job_ram,
-                                    priority=job.priority, pool_id=pool_id, 
+                                    priority=job.priority, pool_id=pool_id,
                                     pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown_pipeline")
                 pool_stats[pool_id]["avail_cpu"] -= job_cpu
                 pool_stats[pool_id]["avail_ram"] -= job_ram
@@ -164,12 +195,12 @@ def priority_scheduler(s, results: List[ExecutionResult],
             # If old_cpu is not None, this job was run previously. However,
             # if it is here, it didn't have an error. Thus it must've been
             # pre-empted earlier by a higher priority job
-            elif job.old_cpu is not None and (job.old_cpu < pool_stats[pool_id]["avail_cpu"] and
-                                            job.old_ram < pool_stats[pool_id]["avail_ram"]):
-                job_cpu = job.old_cpu
-                job_ram = job.old_ram
+            elif rs is not None and (rs.old_cpu < pool_stats[pool_id]["avail_cpu"] and
+                                     rs.old_ram < pool_stats[pool_id]["avail_ram"]):
+                job_cpu = rs.old_cpu
+                job_ram = rs.old_ram
                 asgmnt = Assignment(ops=op_list, cpu=job_cpu, ram=job_ram,
-                                    priority=job.priority, pool_id=pool_id, 
+                                    priority=job.priority, pool_id=pool_id,
                                     pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown_pipeline")
                 pool_stats[pool_id]["avail_cpu"] -= job_cpu
                 pool_stats[pool_id]["avail_ram"] -= job_ram
@@ -182,7 +213,7 @@ def priority_scheduler(s, results: List[ExecutionResult],
                     job_cpu = pool_stats[pool_id]["avail_cpu"]
                     job_ram = pool_stats[pool_id]["avail_ram"]
                 asgmnt = Assignment(ops=op_list, cpu=job_cpu, ram=job_ram,
-                                    priority=job.priority, pool_id=pool_id, 
+                                    priority=job.priority, pool_id=pool_id,
                                     pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown_pipeline")
                 pool_stats[pool_id]["avail_cpu"] -= job_cpu
                 pool_stats[pool_id]["avail_ram"] -= job_ram

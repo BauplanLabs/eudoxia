@@ -1,0 +1,16 @@
+duration = 600
+ticks_per_second = 10
+waiting_seconds_mean = 1
+num_pipelines = 10
+num_operators = 10
+num_segs = 1
+interactive_prob = 0.0
+query_prob = 0.25
+batch_prob = 0.75
+cpu_io_ratio = 0.5
+scheduler_algo = "priority"
+num_pools = 4
+cpus_per_pool = 64
+ram_gb_per_pool = 256
+multi_operator_containers = true
+random_seed = 42

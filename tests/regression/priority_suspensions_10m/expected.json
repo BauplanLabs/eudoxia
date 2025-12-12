@@ -1,0 +1,36 @@
+{
+  "pipelines_created": 5690,
+  "containers_completed": 639,
+  "throughput": 1.065,
+  "p99_latency": 6.7,
+  "assignments": 7130,
+  "suspensions": 23,
+  "failures": 6446,
+  "failure_error_counts": {
+    "OOM": 6446
+  },
+  "pipelines_all": {
+    "arrival_count": 5690,
+    "completion_count": 639,
+    "mean_latency_seconds": 10.425508607198747,
+    "p99_latency_seconds": 48.262
+  },
+  "pipelines_query": {
+    "arrival_count": 1418,
+    "completion_count": 583,
+    "mean_latency_seconds": 7.8698113207547165,
+    "p99_latency_seconds": 9.1
+  },
+  "pipelines_interactive": {
+    "arrival_count": 0,
+    "completion_count": 0,
+    "mean_latency_seconds": NaN,
+    "p99_latency_seconds": NaN
+  },
+  "pipelines_batch": {
+    "arrival_count": 4272,
+    "completion_count": 56,
+    "mean_latency_seconds": 37.03214285714286,
+    "p99_latency_seconds": 58.035000000000004
+  }
+}
