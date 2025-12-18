@@ -2,93 +2,86 @@
 
 ![Tests](https://github.com/BauplanLabs/eudoxia/workflows/Run%20Tests/badge.svg)
 
-Eudoxia provides a simulator for a cloud execution environment. The goal is to evaluate the performance impact of different scheduling policies and algorithm in the cloud without requiring full overhead of implementation or the exorbitant cost of running workloads in the cloud. 
+Eudoxia is a simulator for evaluating scheduling policies for data pipelines, executed in distributed environments.  The pipelines are represented as directed-acyclic graphs (DAGs), and node execution occurs in simulated containers.  Nodes (called "operators") in a pipeline may each be deployed to their own containers, or it is possible to batch multiple nodes together in the same container.  Either way, a node cannot execute until its parents have completed successfully.
 
-Eudoxia is built to be used as a simple python package. All that is required is writing a `params.toml` file, and starting the simulator is as simple as running:
-```python
-eudoxia.run_simulator("params.toml")
-```
+A pipeline is considered completed when all of its operators have completed successfully.  A pipeline is never considered failed, as a scheduler may retry a failed operator.  Indeed, nodes commonly fail due to insufficient memory limits, so a scheduler may retry in a container with more memory (possibly waiting until available machines have enough memory to deploy the bigger container).  If some of the nodes in a container succeeded before a memory limit was hit, only the unfinished nodes must be retried.
 
-## Getting Started 
+Pipelines have one of three priority levels: batch (lowest), interactive, or query (highest).  A scheduler may choose to suspend running containers, to free capacity for higher priority work.  Suspended work may be redeployed again later.
 
-This project requires Python 3.12 or higher, which works much easier with a virtual environment. You can create one in a number of ways, but a simple one is to use the default `venv` package that ships with the standard python distribution. 
+## Getting Started
 
-`python3 -m venv venv_folder` which will create `venv_folder` in the current directory (you can specify a full path). You can activate the virtual environment via `source venv_folder/bin/activate`. 
+Make sure you have Python 3.12+ installed.  If you have (venv)[https://docs.python.org/3/tutorial/venv.html] available, you can install Eudoxia and its dependencies as follows:
 
-Then you want to install `eudoxia` via `python3 -m pip install .` If you wish to develop with it, install it in editable mode `python3 -m pip install --editable .`
+```bash
+# get the code
+git clone https://github.com/BauplanLabs/eudoxia.git
+cd eudoxia
 
-Finally, you can make sure the install worked by running one of the pre-made configuration tests in the `tests` folder by running `python3 test.py priority-pool/params.toml`
-
-```python
-# install eudoxia in editable mode so updates to source code do not require re-installing
+# create a virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
-# when this is fully deployed: python3 -m pip install eudoxia
+# install Eudoxia and its dependencies in the virtual environment
 python3 -m pip install --editable .
-
-# run tests 
-cd tests
-python3 test.py priority-pool/params.toml
 ```
 
-See `Eudoxia Paramaters.md` for full configuration/API descriptions. 
+You can test Eudoxia as follows:
 
-# Terminology
-## Submitted Queries/Jobs
-1. Pipeline: 
-    - The top-level abstraction. All user-submitted jobs are called Pipelines. Pipelines can be thought of as a DAG (directed, acyclic graph) of a sequence of function calls for instance.
-2. Operator
-    - Each node of a pipeline is called an Operator. This logically represents single function executing within a pipeline 
-3. Segment
-    - Each Operator is comprised of a single Segment. A Segment represents the CPU and IO resources consumed while a function runs. So if a function consumes at its peak 100MB of RAM and takes 10 seconds on 1CPU, that would be encoded in the Segment 
-    - Each Segment contains the ground truth information on how much RAM this Operator will use and how the runtime will scale with the number of CPUs provided (i.e. how much speedup is achievable via parallelism). 
- 
-### Type
-Pipelines are also annotated with the context in which they were submitted. This is represented as an enum. 
-1. Query: 
-    - A single-operator Pipeline (i.e. simple SQL query) which is submitted interactively by an analyst. This is given the highest priority as users expect a particularly quick turnaround time on these types of Pipelines
-2. Interactive: 
-    - Any pipeline submitted interactively 
-3. Batch:
-    - Pipelines submitted as part of an batch and not necessarily on a critical path for an analyst or user. These tend to have slightly looser latency constraints.
-
-### Example
-For example, consider an ML pipeline which first executes a SQL query on underlying data in a Parquet file to extract data in a certain format, that data is then passed to a python function which performs some normalization steps and loads it into a numpy array, and finally that array is passed to a python function which trains a simple regression model on the data prepared. This entire job would be represented as a single `Pipeline` comprised of 3 `Operators`, one for the SQL, one for the preparation/normalization, one for the training, and each operator is comprised of a single `Segment` which represents the actual IO and CPU resources consumed when the function runs. 
-
-## Ticks 
-Each iteration of the simulator is logically defined as a `Tick`. The tick frequency is configurable via the `ticks_per_second` parameter in your `params.toml` file, with a default of 100,000 ticks per second (equivalent to 10 microseconds per tick). This allows you to adjust the simulation granularity based on your needs - higher tick frequencies provide more precise simulation at the cost of longer execution time.  
-
-## Modules
-There are three main modules each of which implement a `run_one_tick` function:
-
-### Workload
-```python
-from eudoxia.workload import WorkloadGenerator
 ```
-This module handles generating workloads according to the parameters set by `params.toml`. The `WorkloadGenerator` class's `run_one_tick` function takes no arguments and outputs a list of pipelines that were generated. In ticks where no pipelines are generated, this is an empty list. 
-
-### Scheduler
-```python
-from eudoxia.scheduler import Scheduler
-```
-This module contains scheduler implementations. The scheduler is parameterized by the `scheduler_algo` config value in `params.toml`. The `run_one_tick` function takes in a list of pipelines that have failed during execution during the last iteration and the newly generated pipelines. It outputs a list of commands: what Pipelines to suspend in execution, and what Pipelines to allocate resources for and execute. The Scheduler does not see the Segment's ground truth RAM or CPU scaling information. Rather, it can see a limited amount of information (such as the number of operators and query type) and makes scheduling and allocation decisions based on this.
-
-Different scheduler implementations can be written and registered with the codebase:
-```python
-from eudoxia.scheduler import register_scheduler_init, register_scheduler
+pytest ./tests
 ```
 
-The Scheduler has access to the Executor object so it can see the current state of what resources are allocated and what resources are available.
+Eudoxia has several main components: a workload, a scheduler, and an executor.  All these are configured by parameters in a single TOML file.  You can create a file with the default settings as follows:
 
-### Executor
-```python
-from eudoxia.executor import Executor
 ```
-This module manages all physical resources such as RAM and CPUs. When instructed by the Scheduler, the Executor allocates a `Container` which is an object with a set amount of CPUs and RAM and a set of Operators to execute within it (an entire pipeline doesn't need to execute in a single `Container`). 
+eudoxia init mysim.toml
+```
 
-The `Container` calculates, using `Segment` properties, the number of ticks it will take to complete.
+Feel free to edit mysim.toml.  The `scheduler_algo` field specifies which scheduling policy we will evaluate.  Other fields specify the hardware resources available, the workload characteristics, and other options.
 
-Each call of `run_one_tick` the Executor first suspends all jobs that it is instructed to via the `suspensions` argument and frees those resources, allocates resources according to the `assignments` argument, and then iterates over all running `Containers` and decrements the number of ticks each has left to run. For any that complete, it updates its performance statistics and frees those resources. 
+You can run the simulator as follows, to produce performance statistics (such as pipeline latency):
 
-If a `Container` is allocated with insufficient RAM for the Pipeline running (recall that the Scheduler does not have access to the Segment information when making scheduling/allocation decisions), it will run for as many ticks as it takes to load more data than RAM allocated before failing. When a failure occurs, the resources are freed and the failure is returned for the scheduler to consider. 
+```
+eudoxia run mysim.toml
+```
+
+## Simulator Overview
+
+ - components: workload, executor, scheduler
+ - ticks
+
+## Workload
+
+ - pipelines, operators, segments
+ - CPU and memory for segment
+ - random generation, seeds
+ - traces: how to generate, and exceution.  Limitation: one segment per op.
+
+## Executor
+
+ - executor: all resources
+ - resource pool: like a machine, cannot split job across these
+ - containers, and what we can do with them
+
+## Scheduler
+
+### Interface
+
+### Built-in Schedulers
+
+ - priority
+ - priortiy pool
+ - naive
+
+### Custom Schedulers
+
+ - how to initialize one from the cmdline
+ - how to use it
+
+## Programmatic Simulation
+
+ - brief example
+
+## Configuration Parameters
+
+ - can we base it off the comments?
