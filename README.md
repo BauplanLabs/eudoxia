@@ -10,7 +10,7 @@ Pipelines have one of three priority levels: batch (lowest), interactive, or que
 
 ## Getting Started
 
-Make sure you have Python 3.12+ installed.  If you have (venv)[https://docs.python.org/3/tutorial/venv.html] available, you can install Eudoxia and its dependencies as follows:
+Make sure you have Python 3.12+ installed.  If you have [venv](https://docs.python.org/3/tutorial/venv.html) available, you can install Eudoxia and its dependencies as follows:
 
 ```bash
 # get the code
@@ -49,17 +49,29 @@ eudoxia run mysim.toml
 
 The simulator has three main components, each implementing a `run_one_tick` method. The **workload** generates pipelines according to configured parameters. The **scheduler** decides which operators to deploy, suspend, or retry—without knowing the true resource requirements. The **executor** manages physical resources (CPU and memory), deploys containers, advances running work, and reports completions and failures.
 
-Simulation proceeds in discrete **ticks**. The tick frequency is configurable via `ticks_per_second` (default: 100,000, i.e., 10 microseconds per tick). Each tick, the workload may produce new pipelines, the scheduler issues commands, and the executor advances all running containers by one tick. Higher tick frequencies provide more precise simulation at the cost of longer execution time.
+Simulation proceeds in discrete **ticks**. The tick frequency is configurable via `ticks_per_second` (default: 1,000, i.e., 1 millisecond per tick). Each tick, the workload may produce new pipelines, the scheduler issues commands, and the executor advances all running containers by one tick. Higher tick frequencies provide more precise simulation at the cost of longer execution time. Log output timestamps (e.g., `[10.5s]`) show simulated time, not wall-clock time.
 
 ## Workload
 
-The workload component delivers **pipelines** to the scheduler. A pipeline is a directed acyclic graph (DAG) of operators representing a user job. By default, the simulator uses a `WorkloadGenerator` that creates pipelines randomly according to configured parameters.
+The workload component delivers **pipelines** to the scheduler. Eudoxia supports two approaches: on-the-fly random generation, or replay from trace files.
 
-The key workload parameters are `waiting_seconds_mean` (average time between arrivals) and `num_pipelines` (number of pipelines per arrival). These are means; actual values are sampled from normal distributions, so arrival patterns vary naturally. The `random_seed` parameter ensures reproducibility.
+### Pipelines
 
-Each pipeline has a **priority**: `QUERY` (highest), `INTERACTIVE`, or `BATCH_PIPELINE` (lowest). The mix is controlled by `query_prob`, `interactive_prob`, and `batch_prob`. Query pipelines are always single-operator; others have `num_operators` operators on average.
+A pipeline is a directed acyclic graph (DAG) of operators representing a user job. Each pipeline has a **priority**: `QUERY` (highest), `INTERACTIVE`, or `BATCH_PIPELINE` (lowest). Query pipelines are always single-operator; others have multiple operators.
 
-### Traces
+Each operator contains one or more **segments**, which execute sequentially and represent different stages of an operator's work. Segments define resource usage independently for CPU and memory.
+
+**Memory** follows one of two patterns. If `memory_gb` is set, the segment uses that fixed amount from the start. Otherwise, memory grows linearly as data is read from storage, peaking at `storage_read_gb`. The latter pattern can trigger out-of-memory failures partway through execution if the container's memory limit is exceeded.
+
+**CPU time** is determined by `baseline_cpu_seconds`, which specifies how long a segment takes on a single core. The `cpu_scaling` function determines how runtime decreases with more cores. For example, `const` provides no parallelism benefit; `linear3` gives linear speedup up to 3 cores then remains flat; `sqrt` provides diminishing returns proportional to the square root of core count.
+
+### Workload Approach 1: On-the-Fly Generation
+
+By default, the simulator uses a `WorkloadGenerator` that creates pipelines randomly according to configured parameters. The key parameters are `waiting_seconds_mean` (average time between arrivals) and `num_pipelines` (number of pipelines per arrival). Arrival times are sampled from a normal distribution around the mean, so arrival patterns vary naturally. The `random_seed` parameter ensures reproducibility.
+
+The priority mix is controlled by `query_prob`, `interactive_prob`, and `batch_prob`. Non-query pipelines have `num_operators` operators on average. The `cpu_io_ratio` parameter (0 to 1) controls the resource mix: higher values produce segments with longer CPU times and lower memory usage; lower values produce shorter CPU times with higher memory.
+
+### Workload Approach 2: Trace Replay
 
 As an alternative to random generation, workloads can be loaded from **trace files**. Traces are CSV files that specify exact pipelines, operators, and arrival times. They might be generated by external tools based on real workload observations, or captured from a random workload for reproducible testing.
 
@@ -71,7 +83,7 @@ Trace format (one row per operator):
 | p1          |                 |             | op2         | op1     |              |
 | p2          | 0.5             | QUERY       | op1         |         |              |
 
-The `arrival_seconds` and `priority` columns are only set for the first operator of each pipeline. The `parents` column lists semicolon-separated operator IDs for DAG edges. Resource columns (`baseline_cpu_seconds`, `cpu_scaling`, `memory_gb`, `storage_read_gb`) define each operator's execution requirements.
+The `arrival_seconds` and `priority` columns are only set for the first operator of each pipeline. The `parents` column lists semicolon-separated operator IDs for DAG edges. Resource columns (`baseline_cpu_seconds`, `cpu_scaling`, `memory_gb`, `storage_read_gb`) define each operator's execution requirements. Traces currently enforce a 1:1 mapping between operators and segments.
 
 Generate a trace from random workload parameters:
 
@@ -85,21 +97,13 @@ Run a simulation with a trace (overrides workload generation parameters in the T
 eudoxia run mysim.toml -w workload.csv
 ```
 
-Each operator contains one or more **segments**, which execute sequentially and represent different stages of an operator's work. Random workload generation supports multiple segments via `num_segs`, but traces currently enforce a 1:1 mapping between operators and segments.
-
-Segments define resource usage independently for CPU and memory. The `cpu_io_ratio` parameter (0 to 1) controls the mix during random generation: higher values produce segments with longer CPU times and lower memory usage; lower values produce shorter CPU times with higher memory.
-
-**Memory** follows one of two patterns. If `memory_gb` is set, the segment uses that fixed amount from the start. Otherwise, memory grows linearly as data is read from storage, peaking at `storage_read_gb`. The latter pattern can trigger out-of-memory failures partway through execution if the container's memory limit is exceeded.
-
-**CPU time** is determined by `baseline_cpu_seconds`, which specifies how long a segment takes on a single core. The `cpu_scaling` function determines how runtime decreases with more cores. For example, `const` provides no parallelism benefit; `linear3` gives linear speedup up to 3 cores then remains flat; `sqrt` provides diminishing returns proportional to the square root of core count.
-
 ## Executor
 
 The executor manages all physical resources and runs containers, typically representing a cluster. An executor manages one or more resource pools, each configured with `cpus_per_pool` CPUs and `ram_gb_per_pool` GB of memory. A resource pool is analogous to a machine: a container must run entirely within a single pool and cannot span multiple pools.
 
-A **container** is an allocation of CPU and memory that executes one or more operators. The scheduler specifies the resources and operators for each container; the executor tracks memory usage tick by tick and reports completions and failures. If memory usage exceeds the container's allocation, an out-of-memory (OOM) error occurs and the container fails.
+A **container** is an allocation of CPU and memory that executes one or more operators from the same pipeline. When a container has multiple operators, they run sequentially in DAG order; an operator cannot start until its parents have completed. The scheduler specifies the resources and operators for each container; the executor tracks memory usage tick by tick and reports completions and failures. If memory usage exceeds the container's allocation, an out-of-memory (OOM) error occurs and the container fails.
 
-Containers can be **suspended** to free resources for higher priority work, but only between operator boundaries (not mid-operator). Suspension requires writing current state to disk, which takes time proportional to memory usage. Suspended operators return to pending state and can be reassigned later.
+Containers can be **suspended** to free resources for higher priority work, but only between operator boundaries (not mid-operator). Suspension requires writing current state to disk, which takes time proportional to allocated RAM. Suspended operators return to pending state and can be reassigned later.
 
 ## Scheduler
 
@@ -148,6 +152,21 @@ This creates `myscheduler.py` with a template implementation and sets `scheduler
 PYTHONPATH=. eudoxia run -i myscheduler mysim.toml
 ```
 
+Operators follow a state machine: `PENDING` → `ASSIGNED` → `RUNNING` → `COMPLETED`. Failed operators can be retried directly (`FAILED` → `ASSIGNED`). Suspended operators return to `PENDING` and can be reassigned.
+
+An operator is **ready** to run when it is `PENDING` and all its parents are `COMPLETED`. To find ready operators in a pipeline:
+
+```python
+from eudoxia.workload import OperatorState
+
+ready_ops = pipeline.runtime_status().get_ops(
+    OperatorState.PENDING,
+    require_parents_complete=True
+)
+```
+
+When creating an `Assignment` with multiple operators, they must all be from the same pipeline and in valid DAG order (parents before children). It is valid to include operators that are not yet ready, as long as their parents are earlier in the same container and will complete first.
+
 ## Programmatic Simulation
 
 Eudoxia can be used as a Python library for scripting experiments or integrating into other tools:
@@ -190,7 +209,7 @@ All parameters can be set in the TOML file. Defaults are shown below.
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `waiting_seconds_mean` | 10.0 | Mean seconds between pipeline arrivals |
-| `num_pipelines` | 4 | Mean pipelines per arrival |
+| `num_pipelines` | 4 | Pipelines per arrival |
 | `num_operators` | 5 | Mean operators per pipeline |
 | `cpu_io_ratio` | 0.5 | 0=IO heavy, 1=CPU heavy |
 | `interactive_prob` | 0.3 | Probability of interactive priority |
