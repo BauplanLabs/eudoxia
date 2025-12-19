@@ -2,11 +2,11 @@
 
 ![Tests](https://github.com/BauplanLabs/eudoxia/workflows/Run%20Tests/badge.svg)
 
-Eudoxia is a simulator for evaluating scheduling policies for data pipelines, executed in distributed environments.  The pipelines are represented as directed-acyclic graphs (DAGs), and node execution occurs in simulated containers.  Nodes (called "operators") in a pipeline may each be deployed to their own containers, or it is possible to batch multiple nodes together in the same container.  Either way, a node cannot execute until its parents have completed successfully.
+Eudoxia is a simulator for evaluating scheduling policies for data pipelines, executed in distributed environments.  The pipelines are represented as Directed Acyclic Graphs (DAGs), and node execution occurs in simulated containers.  Nodes (called "operators") in a pipeline may each be deployed to their own containers, or it is possible to batch multiple nodes together in the same container.  Either way, a node cannot execute until its parents have completed successfully.
 
 A pipeline is considered completed when all of its operators have completed successfully.  A pipeline is never considered failed, as a scheduler may retry a failed operator.  Indeed, nodes commonly fail due to insufficient memory limits, so a scheduler may retry in a container with more memory (possibly waiting until available machines have enough memory to deploy the bigger container).  If some of the nodes in a container succeeded before a memory limit was hit, only the unfinished nodes must be retried.
 
-Pipelines have one of three priority levels: batch (lowest), interactive, or query (highest).  A scheduler may choose to suspend running containers, to free capacity for higher priority work.  Suspended work may be redeployed again later.
+Pipelines have one of three priority levels: batch (lowest), interactive, or query (highest).  A scheduler may choose to suspend running containers to free capacity for higher priority work.  Suspended work may be redeployed again later.
 
 ## Getting Started
 
@@ -39,7 +39,7 @@ eudoxia init mysim.toml
 
 Feel free to edit mysim.toml.  The `scheduler_algo` field specifies which scheduling policy we will evaluate.  Other fields specify the hardware resources available, the workload characteristics, and other options.
 
-You can run the simulator as follows, to produce performance statistics (such as pipeline latency):
+You can run the simulator as follows (to produce performance statistics, such as pipeline latency):
 
 ```
 eudoxia run mysim.toml
@@ -47,29 +47,29 @@ eudoxia run mysim.toml
 
 ## Simulator Overview
 
-The simulator has three main components, each implementing a `run_one_tick` method. The **workload** generates pipelines according to configured parameters. The **scheduler** decides which operators to deploy, suspend, or retry—without knowing the true resource requirements. The **executor** manages physical resources (CPU and memory), deploys containers, advances running work, and reports completions and failures.
-
 Simulation proceeds in discrete **ticks**. The tick frequency is configurable via `ticks_per_second` (default: 1,000, i.e., 1 millisecond per tick). Each tick, the workload may produce new pipelines, the scheduler issues commands, and the executor advances all running containers by one tick. Higher tick frequencies provide more precise simulation at the cost of longer execution time. Log output timestamps (e.g., `[10.5s]`) show simulated time, not wall-clock time.
+
+The simulator has three main components, each implementing a `run_one_tick` method. The **workload** generates pipelines according to configured parameters. The **scheduler** decides which operators to deploy, suspend, or retry—without knowing the true resource requirements. The **executor** manages physical resources (CPU and memory), deploys containers, advances running work, and reports completions and failures.
 
 ## Workload
 
-The workload component delivers **pipelines** to the scheduler. Eudoxia supports two approaches: on-the-fly random generation, or replay from trace files.
+The workload component delivers **pipelines** to the scheduler. Eudoxia supports two approaches: on-the-fly random generation and replay from trace files.
 
 ### Pipelines
 
 A pipeline is a directed acyclic graph (DAG) of operators representing a user job. Each pipeline has a **priority**: `QUERY` (highest), `INTERACTIVE`, or `BATCH_PIPELINE` (lowest). Query pipelines are always single-operator; others have multiple operators.
 
-Each operator contains one or more **segments**, which execute sequentially and represent different stages of an operator's work. Segments define resource usage independently for CPU and memory.
+Each operator contains one or more **segments**, which execute sequentially and represent different stages of an operator's work. Segments define resource usage independently for CPU and memory.  Eudoxia currently has limited support for multi-segment operators (built-in workload implementations do not generate/parse multi-segment operators yet).
 
 **Memory** follows one of two patterns. If `memory_gb` is set, the segment uses that fixed amount from the start. Otherwise, memory grows linearly as data is read from storage, peaking at `storage_read_gb`. The latter pattern can trigger out-of-memory failures partway through execution if the container's memory limit is exceeded.
 
-**CPU time** is determined by `baseline_cpu_seconds`, which specifies how long a segment takes on a single core. The `cpu_scaling` function determines how runtime decreases with more cores. For example, `const` provides no parallelism benefit; `linear3` gives linear speedup up to 3 cores then remains flat; `sqrt` provides diminishing returns proportional to the square root of core count.
+**CPU time** is determined by `baseline_cpu_seconds`, which specifies how long a segment takes on a single core. The `cpu_scaling` function determines how runtime decreases with more cores. For example, `const` provides no parallelism benefit.  The `linear3` option gives linear speedup up to 3 cores, then remains flat (e.g., the operator will finish in baseline_cpu_seconds/2 if it is given 2 cores, but it will only finish in baseline_cpu_seconds/3 if it is give 10 cores).  The `sqrt` option provides diminishing returns proportional to the square root of core count.
 
 ### Workload Approach 1: On-the-Fly Generation
 
 By default, the simulator uses a `WorkloadGenerator` that creates pipelines randomly according to configured parameters. The key parameters are `waiting_seconds_mean` (average time between arrivals) and `num_pipelines` (number of pipelines per arrival). Arrival times are sampled from a normal distribution around the mean, so arrival patterns vary naturally. The `random_seed` parameter ensures reproducibility.
 
-The priority mix is controlled by `query_prob`, `interactive_prob`, and `batch_prob`. Non-query pipelines have `num_operators` operators on average. The `cpu_io_ratio` parameter (0 to 1) controls the resource mix: higher values produce segments with longer CPU times and lower memory usage; lower values produce shorter CPU times with higher memory.
+The priority mix is controlled by `query_prob`, `interactive_prob`, and `batch_prob`. Non-query pipelines have `num_operators` operators on average. Segments are sampled from a fixed set of prototypes with different demands for CPU and I/O resources; some do relatively more computation relative to I/O than others. The `cpu_io_ratio` parameter increases the probability that high-CPU prototypes will be used, but it does not enforce a strict ratio of CPU seconds to I/O bytes.
 
 ### Workload Approach 2: Trace Replay
 
@@ -83,7 +83,7 @@ Trace format (one row per operator):
 | p1          |                 |             | op2         | op1     |              |
 | p2          | 0.5             | QUERY       | op1         |         |              |
 
-The `arrival_seconds` and `priority` columns are only set for the first operator of each pipeline. The `parents` column lists semicolon-separated operator IDs for DAG edges. Resource columns (`baseline_cpu_seconds`, `cpu_scaling`, `memory_gb`, `storage_read_gb`) define each operator's execution requirements. Traces currently enforce a 1:1 mapping between operators and segments.
+The `arrival_seconds` and `priority` columns are only set for the first operator of each pipeline. The `parents` column lists semicolon-separated operator IDs for DAG edges. Resource columns (`baseline_cpu_seconds`, `cpu_scaling`, `memory_gb`, `storage_read_gb`) define each operator's execution requirements.
 
 Generate a trace from random workload parameters:
 
@@ -91,11 +91,13 @@ Generate a trace from random workload parameters:
 eudoxia gentrace mysim.toml workload.csv
 ```
 
-Run a simulation with a trace (overrides workload generation parameters in the TOML):
+Run a simulation with a trace:
 
 ```
 eudoxia run mysim.toml -w workload.csv
 ```
+
+Any workload generation options in mysim.toml will be ignored since are using an actual trace (workload.csv) instead of generating on-the-fly.  Be careful to make sure the simulation duration in mysim.toml is as long as the trace, unless you only want to simulate the first events of the the trace (up to the duration cutoff).
 
 ## Executor
 
@@ -140,7 +142,7 @@ def myscheduler(s, results, pipelines):
     return suspensions, assignments
 ```
 
-Generate a starter scheduler with `eudoxia init`:
+For convenience, you can generate starter code for a scheduler with `eudoxia init`:
 
 ```
 eudoxia init mysim.toml -s myscheduler
@@ -152,20 +154,22 @@ This creates `myscheduler.py` with a template implementation and sets `scheduler
 PYTHONPATH=. eudoxia run -i myscheduler mysim.toml
 ```
 
+The `-i` option specifies a Python module to import (so that the decorators can trigger registration of the scheduler).  Unless you install your scheduler, you will generally need to specify `PYTHONPATH` as well because the import will only work on locations in the Python path (that is, `sys.path`).
+
 Operators follow a state machine: `PENDING` → `ASSIGNED` → `RUNNING` → `COMPLETED`. Failed operators can be retried directly (`FAILED` → `ASSIGNED`). Suspended operators return to `PENDING` and can be reassigned.
 
-An operator is **ready** to run when it is `PENDING` and all its parents are `COMPLETED`. To find ready operators in a pipeline:
+An operator is **ready** to run when it can be assigned and all its parents are `COMPLETED`. The `ASSIGNABLE_STATES` constant includes both `PENDING` (new work) and `FAILED` (retries). To find ready operators in a pipeline:
 
 ```python
-from eudoxia.workload import OperatorState
+from eudoxia.workload.runtime_status import ASSIGNABLE_STATES
 
 ready_ops = pipeline.runtime_status().get_ops(
-    OperatorState.PENDING,
+    ASSIGNABLE_STATES,
     require_parents_complete=True
 )
 ```
 
-When creating an `Assignment` with multiple operators, they must all be from the same pipeline and in valid DAG order (parents before children). It is valid to include operators that are not yet ready, as long as their parents are earlier in the same container and will complete first.
+When `multi_operator_containers` is enabled, you may want to pass `require_parents_complete=False` to get all assignable operators, then batch them into a single container. The parents don't need to be complete if they will run first in the same container.
 
 ## Programmatic Simulation
 

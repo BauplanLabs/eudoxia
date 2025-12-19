@@ -92,6 +92,7 @@ class WorkloadGenerator(Workload):
         # average num ops per pipeline
         self.num_operators = num_operators
         # avg num segments per operator
+        assert num_segs == 1, "multiple segments per op not fully supported yet"
         self.num_segs = num_segs
         # value between 0 and 1 for (on avg) if segments are more CPU or IO heavy (low is IO)
         self.cpu_io_ratio = cpu_io_ratio
