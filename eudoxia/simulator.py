@@ -85,6 +85,75 @@ class SimulatorStats(NamedTuple):
     pipelines_interactive: PipelineStats
     pipelines_batch: PipelineStats
 
+    def adjusted_latency(
+        self,
+        weights: Dict[Priority, float] = None,
+        divide_by_completion_rate: bool = True
+    ) -> float:
+        """Compute weighted mean latency across pipeline categories.
+
+        Args:
+            weights: Dict mapping Priority to weight. Default weights are
+                     {QUERY: 1, INTERACTIVE: 5, BATCH_PIPELINE: 10}.
+                     Unspecified priorities default to weight 1.
+            divide_by_completion_rate: If True, divide by completion rate to penalize
+                                       incomplete pipelines. Default is True.
+
+        Returns:
+            Weighted mean latency in seconds, adjusted for completion rate if requested.
+            Returns inf if no pipelines completed (higher latency is bad).
+
+        Note:
+            Known limitations of this metric:
+             - divide_by_completion_rate is overall, instead of per category.  It
+               would be nice to do per category (skipping high prio work is worse
+               than skipping low prio work), but that would be problematic if
+               there are no pipelines submitted (or completed) in one or more categories.
+             - A very slow request may yield a worse score than simply not running
+               it. This could incentivize skipping slow requests rather than running them.
+        """
+        if self.pipelines_all.completion_count == 0:
+            return float('inf')
+
+        if weights is None:
+            weights = {
+                Priority.QUERY: 1,
+                Priority.INTERACTIVE: 5,
+                Priority.BATCH_PIPELINE: 10,
+            }
+
+        categories = [
+            (Priority.QUERY, self.pipelines_query),
+            (Priority.INTERACTIVE, self.pipelines_interactive),
+            (Priority.BATCH_PIPELINE, self.pipelines_batch),
+        ]
+
+        weighted_latency_sum = 0.0
+        weighted_count_sum = 0.0
+        total_arrivals = 0
+        total_completions = 0
+
+        for priority, stats in categories:
+            weight = weights.get(priority, 1)
+            if stats.completion_count > 0:
+                weighted_count = weight * stats.completion_count
+                weighted_latency_sum += weighted_count * stats.mean_latency_seconds
+                weighted_count_sum += weighted_count
+            total_arrivals += stats.arrival_count
+            total_completions += stats.completion_count
+
+        # Ensure this method breaks if new categories are added
+        assert total_arrivals == self.pipelines_all.arrival_count, \
+            "Total arrivals mismatch - new pipeline category may have been added"
+
+        adjusted = weighted_latency_sum / weighted_count_sum
+
+        if divide_by_completion_rate:
+            completion_rate = total_completions / total_arrivals
+            adjusted = adjusted / completion_rate
+
+        return adjusted
+
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization."""
         return {
