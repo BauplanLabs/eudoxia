@@ -1,6 +1,7 @@
 import pytest
+import math
 from typing import Dict, List
-from eudoxia.simulator import run_simulator, get_param_defaults
+from eudoxia.simulator import run_simulator, get_param_defaults, SimulatorStats, PipelineStats
 from eudoxia.workload import Workload, Pipeline
 from eudoxia.utils import Priority
 
@@ -154,3 +155,82 @@ def test_oom_retry(scheduler_algo):
     assert stats.failures == stats.assignments - 1, f"{scheduler_algo}: Expected failures={stats.assignments-1}, got {stats.failures}"
     assert 'OOM' in stats.failure_error_counts, f"{scheduler_algo}: Expected OOM errors in failure counts"
     assert stats.failure_error_counts['OOM'] == stats.failures, f"{scheduler_algo}: All failures should be OOM"
+
+
+def test_adjusted_latency():
+    """Test SimulatorStats.adjusted_latency with progressively complex scenarios."""
+
+    ignored_sim_fields = {
+        "pipelines_created": None, "containers_completed": None, "throughput": None, "p99_latency": None,
+        "assignments": None, "suspensions": None, "failures": 0, "failure_error_counts": {},
+    }
+    ignored_pipe_fields = {
+        "p99_latency_seconds": None,
+    }
+
+    # Scenario 1: Equal weights, one completion each, 100% completion rate
+    stats = SimulatorStats(
+        pipelines_all=PipelineStats(
+            arrival_count=3, completion_count=3,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+
+        pipelines_query=PipelineStats(
+            arrival_count=1, completion_count=1,
+            mean_latency_seconds=1.0, **ignored_pipe_fields),
+        pipelines_interactive=PipelineStats(
+            arrival_count=1, completion_count=1,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        pipelines_batch=PipelineStats(
+            arrival_count=1, completion_count=1,
+            mean_latency_seconds=3.0, **ignored_pipe_fields),
+        **ignored_sim_fields,
+    )
+    weights = {Priority.QUERY: 1, Priority.INTERACTIVE: 1, Priority.BATCH_PIPELINE: 1}
+    result = stats.adjusted_latency(weights=weights, divide_by_completion_rate=False)
+    assert result == pytest.approx(2.0)
+
+    # Scenario 2: Same stats, different waiting
+    weights = {Priority.QUERY: 2, Priority.INTERACTIVE: 1, Priority.BATCH_PIPELINE: 0}
+    result = stats.adjusted_latency(weights=weights, divide_by_completion_rate=False)
+    assert result == pytest.approx((1+1+2) / 3)
+
+    # Scenario 3: without divide_by_completion_rate, unfinished pipelines don't impact latency
+    stats = SimulatorStats(
+        pipelines_all=PipelineStats(
+            arrival_count=6, completion_count=3,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+
+        pipelines_query=PipelineStats(
+            arrival_count=1, completion_count=1,
+            mean_latency_seconds=1.0, **ignored_pipe_fields),
+        pipelines_interactive=PipelineStats(
+            arrival_count=2, completion_count=1,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        pipelines_batch=PipelineStats(
+            arrival_count=3, completion_count=1,
+            mean_latency_seconds=3.0, **ignored_pipe_fields),
+        **ignored_sim_fields,
+    )
+    weights = {Priority.QUERY: 1, Priority.INTERACTIVE: 1, Priority.BATCH_PIPELINE: 1}
+    result = stats.adjusted_latency(weights=weights, divide_by_completion_rate=False)
+    assert result == pytest.approx(2.0)
+
+    # Scenario 4: with divide_by_completion_rate, latency adjusts higher.
+    # here, half finish, so we 2x latency
+    weights = {Priority.QUERY: 1, Priority.INTERACTIVE: 1, Priority.BATCH_PIPELINE: 1}
+    result = stats.adjusted_latency(weights=weights, divide_by_completion_rate=True)
+    assert result == pytest.approx(4.0)
+
+    # Scenario 5: no completions, inf latency
+    ps = PipelineStats(arrival_count=1, completion_count=0,
+                       mean_latency_seconds=None, **ignored_pipe_fields)
+    stats = SimulatorStats(
+        pipelines_all=ps,
+        pipelines_query=ps,
+        pipelines_interactive=ps,
+        pipelines_batch=ps,
+        **ignored_sim_fields,
+    )
+    weights = {Priority.QUERY: 1, Priority.INTERACTIVE: 1, Priority.BATCH_PIPELINE: 1}
+    result = stats.adjusted_latency(weights=weights, divide_by_completion_rate=True)
+    assert stats.adjusted_latency() == float('inf')
