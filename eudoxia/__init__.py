@@ -4,6 +4,7 @@ import tomllib
 import sys
 from . import simulator
 from .simulator import *
+from eudoxia.__main__ import SCHEDULER_TEMPLATE
 
 logging_config = None
 src = "logging.conf"
