@@ -1,5 +1,5 @@
 from .workload import Workload, WorkloadGenerator
 from .pipeline import Operator, Pipeline, Segment
 from .csv_io import CSVWorkloadReader
-from .runtime_status import PipelineRuntimeStatus, OperatorState
+from .runtime_status import PipelineRuntimeStatus, OperatorState, ASSIGNABLE_STATES
 
