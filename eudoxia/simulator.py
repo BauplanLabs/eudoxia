@@ -94,7 +94,7 @@ class SimulatorStats(NamedTuple):
 
         Args:
             weights: Dict mapping Priority to weight. Default weights are
-                     {QUERY: 1, INTERACTIVE: 5, BATCH_PIPELINE: 10}.
+                     {QUERY: 10, INTERACTIVE: 5, BATCH_PIPELINE: 1}.
                      Unspecified priorities default to weight 1.
             divide_by_completion_rate: If True, divide by completion rate to penalize
                                        incomplete pipelines. Default is True.
@@ -117,9 +117,9 @@ class SimulatorStats(NamedTuple):
 
         if weights is None:
             weights = {
-                Priority.QUERY: 1,
+                Priority.QUERY: 10,
                 Priority.INTERACTIVE: 5,
-                Priority.BATCH_PIPELINE: 10,
+                Priority.BATCH_PIPELINE: 1,
             }
 
         categories = [
