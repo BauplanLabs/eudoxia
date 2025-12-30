@@ -1,9 +1,10 @@
 import pytest
+from eudoxia.executor import Executor
 from eudoxia.executor.resource_pool import ResourcePool
 from eudoxia.executor.assignment import Assignment, Suspend
 from eudoxia.workload.pipeline import Segment, Operator, Pipeline
 from eudoxia.workload import OperatorState
-from eudoxia.utils import Priority
+from eudoxia.utils import Priority, DISK_SCAN_GB_SEC
 
 
 def test_resource_pool_basic():
@@ -175,3 +176,61 @@ def test_runtime_status_state_transitions():
 
     # Pipeline should be successful
     assert status.is_pipeline_successful()
+
+
+def test_memory_allocated_vs_consumed():
+    """Test that allocated memory jumps immediately while consumed grows over time.
+
+    Setup:
+    - Executor with 2 pools, 100GB each (200GB total)
+    - One container allocated 100GB (50% of total)
+    - I/O reads 50GB, so memory grows from 0 to 50GB (25% of total)
+    """
+    ram_per_pool = 100
+    ticks_per_second = 10
+    executor = Executor(
+        num_pools=2,
+        cpus_per_pool=10,
+        ram_gb_per_pool=ram_per_pool,
+        ticks_per_second=ticks_per_second,
+    )
+    tick_length = 1.0 / ticks_per_second
+
+    pipeline = Pipeline(pipeline_id="mem_test", priority=Priority.BATCH_PIPELINE)
+    op = pipeline.new_operator()
+    storage_read = 50
+    op.add_segment(Segment(
+        baseline_cpu_seconds=0,
+        memory_gb=None,
+        storage_read_gb=storage_read,
+    ))
+
+    allocation_ram = ram_per_pool
+    assignment = Assignment(
+        ops=[op], cpu=1, ram=allocation_ram,
+        priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="mem_test",
+    )
+
+    completed = False
+    for tick in range(1000):
+        assignments = [assignment] if tick == 0 else []
+        results = executor.run_one_tick([], assignments)
+
+        if results:
+            # Container just completed: both should be 0
+            assert not results[0].failed()
+            expected_allocated = 0
+            expected_consumed = 0
+            completed = True
+        else:
+            # During I/O: allocation is fixed, consumption grows
+            expected_allocated = allocation_ram
+            expected_consumed = (tick + 1) * tick_length * DISK_SCAN_GB_SEC
+
+        assert executor.get_allocated_ram_gb() == expected_allocated, f"tick {tick}"
+        assert executor.get_consumed_ram_gb() == expected_consumed, f"tick {tick}"
+
+        if completed:
+            break
+
+    assert completed, "Container should have completed"

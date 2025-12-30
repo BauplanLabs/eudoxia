@@ -29,6 +29,11 @@ class ResourcePool:
         self.suspending_containers: List[Container] = []
         self.suspended_containers: List[Container] = []
 
+        # Memory tracking: allocated vs consumed
+        # - allocated: sum of container RAM limits (max_ram_pool - avail_ram_pool)
+        # - consumed: actual memory usage by active containers (updated each tick)
+        self.consumed_ram_gb = 0.0
+
 
         # STATS
         self.num_completed = 0
@@ -68,9 +73,21 @@ class ResourcePool:
     def status_report(self):
         logger.info(f"----------STATUS REPORT POOL {self.pool_id}----------")
         for c in self.active_containers:
-            secs_left = c._num_ticks_left * self.tick_length_secs 
+            secs_left = c._num_ticks_left * self.tick_length_secs
             logger.info(f"{c.container_id} running with {c._num_ticks_left} ticks left or {secs_left} seconds left")
         logger.info(f"----------END STATUS REPORT FOR POOL {self.pool_id}----------")
+
+    def get_allocated_ram_gb(self) -> float:
+        """Return memory allocated (sum of container limits) in GB."""
+        return self.max_ram_pool - self.avail_ram_pool
+
+    def get_consumed_ram_gb(self) -> float:
+        """Return memory consumed by active containers in GB."""
+        return self.consumed_ram_gb
+
+    def _reconcile_consumed_ram(self):
+        """Recalculate consumed_ram_gb from scratch to correct floating point drift."""
+        self.consumed_ram_gb = sum(c.get_current_memory_usage() for c in self.active_containers)
 
     def log_pool_utilization(self): 
         cpu_util = 100.0 * self.avail_cpu_pool / self.max_cpu_pool
@@ -107,7 +124,7 @@ class ResourcePool:
 
                 # Create container from assignment (ops already transitioned to ASSIGNED)
                 logger.info(f"start container ram={a.ram} cpu={a.cpu} ops={len(a.ops)} priority={a.priority} pool_id={self.pool_id} pipeline_id={a.pipeline_id}")
-                container = Container(assignment=a, pool_id=self.pool_id,
+                container = Container(assignment=a, pool=self,
                                       ticks_per_second=self.ticks_per_second)
                 self.avail_cpu_pool -= a.cpu
                 self.avail_ram_pool -= a.ram
@@ -149,6 +166,8 @@ class ResourcePool:
 
         for c in to_remove:
             self.active_containers.remove(c)
+        if to_remove:
+            self._reconcile_consumed_ram()
 
         self.log_pool_utilization()
         return results

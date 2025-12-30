@@ -354,6 +354,15 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
                     pipeline_latencies_by_priority[pipeline.priority].append(latency_ticks)
                     del outstanding_pipelines[pipeline_id]
 
+        # log memory stats every 1 second of simulated time
+        if tick_number % ticks_per_second == 0:
+            total_ram = executor.get_total_ram_gb()
+            allocated_ram = executor.get_allocated_ram_gb()
+            consumed_ram = executor.get_consumed_ram_gb()
+            pct_allocated = 100.0 * allocated_ram / total_ram
+            pct_consumed = 100.0 * consumed_ram / total_ram
+            logger.info(f"memory: total={total_ram:.0f}GB allocated={pct_allocated:.1f}% consumed={pct_consumed:.1f}%")
+
     # TODO: better way to calculate work throuphput, going by num ops, etc. is
     # going to skew towards more smaller jobs
     throughput = executor.num_completed() / params['duration']
