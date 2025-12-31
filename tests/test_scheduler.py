@@ -83,7 +83,7 @@ def test_resume_only_assigns_incomplete_operators(scheduler_algo):
     # Create a container from the assignment (ops already transitioned to ASSIGNED)
     container = Container(
         assignment=first_assignment,
-        pool_id=pool_id,
+        pool=executor.pools[pool_id],
         ticks_per_second=10,
     )
 

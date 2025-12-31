@@ -15,11 +15,11 @@ class Container:
     """
     next_container_num = 1
 
-    def __init__(self, assignment: Assignment, pool_id: int, ticks_per_second: int):
+    def __init__(self, assignment: Assignment, pool, ticks_per_second: int):
         self.container_id = f"c{Container.next_container_num}"
         Container.next_container_num += 1
         self.assignment = assignment
-        self.pool_id = pool_id
+        self.pool = pool
         self.suspend_ticks = None
         self._suspend_ticks_left = None
         self.error: Optional[str] = None
@@ -40,6 +40,10 @@ class Container:
     @property
     def operators(self) -> List[Operator]:
         return self.assignment.ops
+
+    @property
+    def pool_id(self) -> int:
+        return self.pool.pool_id
 
     @property
     def priority(self) -> Priority:
@@ -122,6 +126,7 @@ class Container:
                         # output checkpointed somewhere?
                         for remaining_op in self.operators[op_idx:]:
                             remaining_op.transition(OperatorState.FAILED)
+                        self._current_memory = 0.0
                         self._completed = True
                         yield
                         return
@@ -145,11 +150,15 @@ class Container:
     def tick(self):
         """
         Execute one tick. Advances to next state (OOM checked in _advance_tick).
+        Updates pool's consumed memory with the delta from this tick.
         """
         if self._completed:
             return
+        old_memory = self._current_memory
         next(self._tick_iter)
         self._ticks_elapsed += 1
+        delta = self._current_memory - old_memory
+        self.pool.consumed_ram_gb += delta
 
     def is_completed(self):
         return self._completed

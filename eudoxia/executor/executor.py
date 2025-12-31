@@ -50,6 +50,18 @@ class Executor:
             ret.extend(self.pools[pid].container_tick_times)
         return ret
 
+    def get_total_ram_gb(self) -> float:
+        """Return total RAM capacity across all pools in GB."""
+        return self.num_pools * self.ram_gb_per_pool
+
+    def get_allocated_ram_gb(self) -> float:
+        """Return total allocated RAM across all pools in GB."""
+        return sum(p.get_allocated_ram_gb() for p in self.pools)
+
+    def get_consumed_ram_gb(self) -> float:
+        """Return total consumed RAM across all pools in GB."""
+        return sum(p.get_consumed_ram_gb() for p in self.pools)
+
     def run_one_tick(self, suspensions: List[Suspend],
                      assignments: List[Assignment]) -> List[ExecutionResult]:
         '''
