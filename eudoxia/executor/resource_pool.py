@@ -14,7 +14,8 @@ class ResourcePool:
 
     A resource pool is analogous to a machine on which we can run containers.
     """
-    def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second, multi_operator_containers=True, **kwargs):
+    def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second,
+                 multi_operator_containers=True, allow_memory_overcommit=False, **kwargs):
         self.pool_id = pool_id
         self.max_cpu_pool = cpu_pool
         self.max_ram_pool = ram_pool
@@ -23,6 +24,7 @@ class ResourcePool:
         self.ticks_per_second = ticks_per_second
         self.tick_length_secs = 1.0 / ticks_per_second
         self.multi_operator_containers = multi_operator_containers
+        self.allow_memory_overcommit = allow_memory_overcommit
 
         # List of actively running and suspended containers
         self.active_containers: List[Container] = []
@@ -54,7 +56,8 @@ class ResourcePool:
             ram_to_be_alloc += a.ram
 
         assert cpu_to_be_alloc <= self.avail_cpu_pool, "Overallocated CPU in assignment"
-        assert ram_to_be_alloc <= self.avail_ram_pool, "Overallocated RAM in assignment"
+        if not self.allow_memory_overcommit:
+            assert ram_to_be_alloc <= self.avail_ram_pool, "Overallocated RAM in assignment"
 
     def get_container_by_id(self, container_id: str) -> Container: 
         for container in self.active_containers:
@@ -88,6 +91,49 @@ class ResourcePool:
     def _reconcile_consumed_ram(self):
         """Recalculate consumed_ram_gb from scratch to correct floating point drift."""
         self.consumed_ram_gb = sum(c.get_current_memory_usage() for c in self.active_containers)
+
+    def _check_pool_level_oom(self):
+        """Check if pool consumption exceeds capacity and kill containers if needed.
+
+        When memory overcommit is enabled, consumption can exceed pool capacity.
+        This method scores containers and kills them in order until consumption
+        drops below capacity.
+
+        Score = consumption_gb * consumption_percent
+        where consumption_percent = consumption / allocation
+
+        This prefers killing containers with high absolute or high relative usage.
+        """
+        if not self.allow_memory_overcommit:
+            return
+
+        if self.consumed_ram_gb <= self.max_ram_pool:
+            return
+
+        # Score all active containers
+        scored = []
+        for c in self.active_containers:
+            if c.is_completed():
+                continue
+            consumption_gb = c.get_current_memory_usage()
+            if consumption_gb <= 0:
+                continue
+            consumption_percent = consumption_gb / c.assignment.ram
+            score = consumption_gb * consumption_percent
+            scored.append((score, c))
+
+        # Sort by score descending (highest score = first to kill)
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        # Kill containers until consumption drops below capacity
+        for _, victim in scored:
+            if self.consumed_ram_gb <= self.max_ram_pool:
+                break
+            # TODO: consider using a different error type for pool-level OOM
+            logger.info(f"pool {self.pool_id} OOM: killing container {victim.container_id} "
+                       f"(consumption={victim.get_current_memory_usage():.1f}GB, "
+                       f"allocation={victim.assignment.ram}GB)")
+            victim.kill("OOM")
 
     def log_pool_utilization(self): 
         cpu_util = 100.0 * self.avail_cpu_pool / self.max_cpu_pool
@@ -141,9 +187,16 @@ class ResourcePool:
             self.suspending_containers.remove(c)
             self.suspended_containers.append(c)
 
-        to_remove = []
+        # Tick all active containers
         for c in self.active_containers:
             c.tick()
+
+        # Check for pool-level OOM (only when overcommit is enabled)
+        self._check_pool_level_oom()
+
+        # Process completed containers (including those killed by pool-level OOM)
+        to_remove = []
+        for c in self.active_containers:
             if c.is_completed():
                 self.avail_cpu_pool += c.assignment.cpu
                 self.avail_ram_pool += c.assignment.ram

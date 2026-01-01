@@ -175,6 +175,28 @@ class Container:
         """Returns current memory usage in GB."""
         return self._current_memory
 
+    def kill(self, error: str = "OOM"):
+        """Kill this container externally (e.g., due to pool-level OOM).
+
+        Marks the container as completed with an error, transitions remaining
+        ops to FAILED, and updates pool's consumed memory.
+
+        Note: This is separate from the internal OOM handling in the generator
+        because the memory accounting differs. Internal OOM happens mid-tick
+        and tick() handles the delta; external kill happens after all ticks
+        complete and must update consumed_ram_gb directly.
+        """
+        if self._completed:
+            return
+        self.error = error
+        # Transition remaining ops to FAILED (same as internal OOM handling)
+        for op in self.operators[self._current_op_idx:]:
+            op.transition(OperatorState.FAILED)
+        old_memory = self._current_memory
+        self._current_memory = 0.0
+        self._completed = True
+        self.pool.consumed_ram_gb += (self._current_memory - old_memory)
+
     def suspend_container(self):
         """
         Suspend container execution, free CPUs and RAM. Requires writing

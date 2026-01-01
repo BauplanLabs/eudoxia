@@ -213,6 +213,8 @@ def get_param_defaults() -> Dict:
         "ram_gb_per_pool": 256,
         # allow multiple operators in single container
         "multi_operator_containers": True,
+        # allow container allocations to exceed pool capacity (consumption still capped)
+        "allow_memory_overcommit": False,
         # random seed for workload generation
         "random_seed": 42,
     }
