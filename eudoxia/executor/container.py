@@ -109,28 +109,6 @@ class Container:
                     else:
                         self._current_memory = seg.get_peak_memory_gb()
 
-                    # have we OOM'd?
-                    if self._current_memory > self.assignment.ram:
-                        self.error = "OOM"
-
-                        # if the current running op fails, the ops
-                        # before it are completed, and the ones after
-                        # it are assigned.
-                        #
-                        # TODO: decide when an op fails, what should
-                        # be the state of the other ops in the
-                        # container be?
-                        #
-                        # for example, does an op that was already
-                        # completed need to be retried, or was the
-                        # output checkpointed somewhere?
-                        for remaining_op in self.operators[op_idx:]:
-                            remaining_op.transition(OperatorState.FAILED)
-                        self._current_memory = 0.0
-                        self._completed = True
-                        yield
-                        return
-
                     # are we at the end of the op (last tick of last
                     # seg)?  if so, we're either completed, or we can
                     # suspend, depending on whether this is the last
@@ -141,8 +119,7 @@ class Container:
                         op.transition(OperatorState.COMPLETED)
                         self._current_op_idx += 1
                         if op_idx == len(self.operators) - 1:
-                            self._current_memory = 0.0
-                            self._completed = True
+                            self._mark_completed()
                         else:
                             self._can_suspend = True
                     yield
@@ -160,16 +137,21 @@ class Container:
         delta = self._current_memory - old_memory
         self.pool.consumed_ram_gb += delta
 
-    def is_completed(self):
-        return self._completed
-
     def ticks_elapsed(self) -> int:
         """Returns the number of ticks that have been executed."""
         return self._ticks_elapsed
 
-    def can_suspend_container(self) -> bool:
-        """Can only suspend a container between operators."""
-        return self._can_suspend
+    def _mark_completed(self, error=None):
+        """A container is marked completed when it finished
+        successfully, or when it is killed (perhaps by the OOM
+        killer.  A None error indicates success, or a string will
+        indicate the failure reason."""
+        self.error = error
+        self._completed = True
+        self._current_memory = 0.0
+
+    def is_completed(self):
+        return self._completed
 
     def get_current_memory_usage(self) -> float:
         """Returns current memory usage in GB."""
@@ -186,17 +168,27 @@ class Container:
         and tick() handles the delta; external kill happens after all ticks
         complete and must update consumed_ram_gb directly.
         """
-        if self._completed:
-            return
-        self.error = error
-        # Transition remaining ops to FAILED (same as internal OOM handling)
+        assert error
+        assert not self._completed
+
+        logger.info(f"pool {self.pool_id}: killing container {self.container_id} "
+                    f"(consumption={self.get_current_memory_usage():.1f}GB, "
+                    f"allocation={self.assignment.ram}GB), "
+                    f"reason={error}")
+
+        # Transition remaining ops to FAILED
         for op in self.operators[self._current_op_idx:]:
             op.transition(OperatorState.FAILED)
-        old_memory = self._current_memory
+        self.error = error
+
+        self.pool.consumed_ram_gb -= self._current_memory
         self._current_memory = 0.0
         self._completed = True
-        self.pool.consumed_ram_gb += (self._current_memory - old_memory)
 
+    def can_suspend_container(self) -> bool:
+        """Can only suspend a container between operators."""
+        return self._can_suspend
+        
     def suspend_container(self):
         """
         Suspend container execution, free CPUs and RAM. Requires writing
