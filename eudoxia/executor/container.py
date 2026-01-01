@@ -101,13 +101,19 @@ class Container:
                     # determine current memory consumption
                     if i < io_ticks:
                         if seg.memory_gb is not None:
-                            self._current_memory = seg.memory_gb
+                            self.set_current_memory_usage(seg.memory_gb)
                         else:
                             # Memory grows linearly with I/O progress
                             io_progress_secs = (i + 1) * self.tick_length_secs
-                            self._current_memory = io_progress_secs * DISK_SCAN_GB_SEC
+                            self.set_current_memory_usage(io_progress_secs * DISK_SCAN_GB_SEC)
                     else:
-                        self._current_memory = seg.get_peak_memory_gb()
+                        self.set_current_memory_usage(seg.get_peak_memory_gb())
+
+                    # If over individual container limit, freeze until pool's
+                    # OOM killer terminates us. We yield repeatedly to give
+                    # the pool a chance to kill us after each tick.
+                    while self._current_memory > self.assignment.ram:
+                        yield
 
                     # are we at the end of the op (last tick of last
                     # seg)?  if so, we're either completed, or we can
@@ -125,30 +131,23 @@ class Container:
                     yield
 
     def tick(self):
-        """
-        Execute one tick. Advances to next state (OOM checked in _advance_tick).
-        Updates pool's consumed memory with the delta from this tick.
-        """
+        """Execute one tick. Advances generator to next state."""
         if self._completed:
             return
-        old_memory = self._current_memory
         next(self._tick_iter)
         self._ticks_elapsed += 1
-        delta = self._current_memory - old_memory
-        self.pool.consumed_ram_gb += delta
 
     def ticks_elapsed(self) -> int:
         """Returns the number of ticks that have been executed."""
         return self._ticks_elapsed
 
     def _mark_completed(self, error=None):
-        """A container is marked completed when it finished
-        successfully, or when it is killed (perhaps by the OOM
-        killer.  A None error indicates success, or a string will
-        indicate the failure reason."""
+        """Mark container as completed (successfully or with error).
+
+        Zeros memory via set_current_memory_usage to properly update pool tracking."""
         self.error = error
         self._completed = True
-        self._current_memory = 0.0
+        self.set_current_memory_usage(0.0)
 
     def is_completed(self):
         return self._completed
@@ -157,17 +156,16 @@ class Container:
         """Returns current memory usage in GB."""
         return self._current_memory
 
+    def set_current_memory_usage(self, new_memory: float):
+        """Set memory usage and update pool's consumed memory tracking."""
+        delta = new_memory - self._current_memory
+        self._current_memory = new_memory
+        self.pool.consumed_ram_gb += delta
+
     def kill(self, error: str = "OOM"):
-        """Kill this container externally (e.g., due to pool-level OOM).
+        """Kill this container (e.g., due to OOM).
 
-        Marks the container as completed with an error, transitions remaining
-        ops to FAILED, and updates pool's consumed memory.
-
-        Note: This is separate from the internal OOM handling in the generator
-        because the memory accounting differs. Internal OOM happens mid-tick
-        and tick() handles the delta; external kill happens after all ticks
-        complete and must update consumed_ram_gb directly.
-        """
+        Transitions remaining ops to FAILED and marks container completed."""
         assert error
         assert not self._completed
 
@@ -176,14 +174,9 @@ class Container:
                     f"allocation={self.assignment.ram}GB), "
                     f"reason={error}")
 
-        # Transition remaining ops to FAILED
         for op in self.operators[self._current_op_idx:]:
             op.transition(OperatorState.FAILED)
-        self.error = error
-
-        self.pool.consumed_ram_gb -= self._current_memory
-        self._current_memory = 0.0
-        self._completed = True
+        self._mark_completed(error=error)
 
     def can_suspend_container(self) -> bool:
         """Can only suspend a container between operators."""
