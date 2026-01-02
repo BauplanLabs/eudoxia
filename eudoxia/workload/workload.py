@@ -155,7 +155,7 @@ class WorkloadGenerator(Workload):
         for _ in range(self.num_pipelines):
             priority = self.rng.choice(a=self.priority_values, p=self.priority_probs)
             self.pipeline_counter += 1
-            pipeline_id = f"g{self.pipeline_counter}"
+            pipeline_id = f"p{self.pipeline_counter}"
             p = Pipeline(pipeline_id, Priority(priority))
             if priority == Priority.QUERY.value:
                 op = p.new_operator()
