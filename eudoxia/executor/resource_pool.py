@@ -14,34 +14,40 @@ class ResourcePool:
 
     A resource pool is analogous to a machine on which we can run containers.
     """
-    def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second, multi_operator_containers=True, **kwargs):
+    def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second,
+                 multi_operator_containers=True, allow_memory_overcommit=False, **kwargs):
+        # CONFIGURATION
         self.pool_id = pool_id
-        self.max_cpu_pool = cpu_pool
-        self.max_ram_pool = ram_pool
-        self.avail_cpu_pool = cpu_pool
-        self.avail_ram_pool = ram_pool
         self.ticks_per_second = ticks_per_second
         self.tick_length_secs = 1.0 / ticks_per_second
         self.multi_operator_containers = multi_operator_containers
+        self.allow_memory_overcommit = allow_memory_overcommit
 
+        # RESOURCES
+
+        # capacity of cluster:
+        self.max_cpu_pool = cpu_pool
+        self.max_ram_pool = ram_pool
+
+        # not-allocated resources (allocated resources that are not consumed do NOT count towands this)
+        # (allocated memory = max_ram_pool - avail_ram_pool)
+        self.avail_cpu_pool = cpu_pool
+        self.avail_ram_pool = ram_pool
+
+        # how much of memory allocated to containers is actually being used?
+        self.consumed_ram_gb = 0.0
+
+        # CONTAINER BOOKKEEPING
         # List of actively running and suspended containers
         self.active_containers: List[Container] = []
         self.suspending_containers: List[Container] = []
         self.suspended_containers: List[Container] = []
-
-        # Memory tracking: allocated vs consumed
-        # - allocated: sum of container RAM limits (max_ram_pool - avail_ram_pool)
-        # - consumed: actual memory usage by active containers (updated each tick)
-        self.consumed_ram_gb = 0.0
-
 
         # STATS
         self.num_completed = 0
         self.container_tick_times = []
         self.cost = 0 # add force_run logic here
         self.i = 0
-        self.outfile_name = f"pool_{self.pool_id}_utility.csv"
-        self.outfile = open(self.outfile_name, 'w')
 
     def verify_valid_assignment(self, assignments: List[Assignment]):
         """
@@ -54,7 +60,8 @@ class ResourcePool:
             ram_to_be_alloc += a.ram
 
         assert cpu_to_be_alloc <= self.avail_cpu_pool, "Overallocated CPU in assignment"
-        assert ram_to_be_alloc <= self.avail_ram_pool, "Overallocated RAM in assignment"
+        if not self.allow_memory_overcommit:
+            assert ram_to_be_alloc <= self.avail_ram_pool, "Overallocated RAM in assignment"
 
     def get_container_by_id(self, container_id: str) -> Container: 
         for container in self.active_containers:
@@ -89,11 +96,50 @@ class ResourcePool:
         """Recalculate consumed_ram_gb from scratch to correct floating point drift."""
         self.consumed_ram_gb = sum(c.get_current_memory_usage() for c in self.active_containers)
 
-    def log_pool_utilization(self): 
-        cpu_util = 100.0 * self.avail_cpu_pool / self.max_cpu_pool
-        ram_util = 100.0 * self.avail_ram_pool / self.max_ram_pool
-        out_line = f"{self.i}, {cpu_util:.2f}, {ram_util:.2f}\n"
-        self.outfile.write(out_line)
+    def _run_out_of_memory_killer(self):
+        """The OOM killer kills activate containers when (a) a
+        container has exceeded its individual limit or (b) the
+        cumulative memory consumption exceeds machine capacity.  In
+        the latter case, the killer must select one or more victims.
+        It scores candidates as follows:
+
+        Score = consumption_gb * consumption_percent
+        where consumption_percent = consumption / allocation
+
+        This prefers killing containers with high absolute or high relative usage.
+        """
+
+        # step 1: kill any that have exceeded individual limits
+        for c in self.active_containers:
+            if c.get_current_memory_usage() > c.assignment.ram:
+                c.kill("OOM")
+
+        # if we're within overall limits, we're done
+        if self.consumed_ram_gb <= self.max_ram_pool:
+            return
+
+        # step 2: identify victim containers to kill, bringing us within overall limits
+        
+        # Score all active containers
+        scored = []
+        for c in self.active_containers:
+            if c.is_completed():
+                continue
+            consumption_gb = c.get_current_memory_usage()
+            if consumption_gb <= 0:
+                continue
+            consumption_percent = consumption_gb / c.assignment.ram
+            score = consumption_gb * consumption_percent
+            scored.append((score, c))
+
+        # Sort by score descending (highest score = first to kill)
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        # Kill containers until consumption drops below capacity
+        for _, victim in scored:
+            if self.consumed_ram_gb <= self.max_ram_pool:
+                break
+            victim.kill("OOM")
 
     def run_one_tick(self, suspensions: List[Suspend],
                      assignments: List[Assignment]) -> List[ExecutionResult]:
@@ -141,9 +187,16 @@ class ResourcePool:
             self.suspending_containers.remove(c)
             self.suspended_containers.append(c)
 
-        to_remove = []
+        # Tick all active containers
         for c in self.active_containers:
             c.tick()
+
+        # Kill as necessary to keep within total and individual limits
+        self._run_out_of_memory_killer()
+
+        # Process completed containers (including those killed by pool-level OOM)
+        to_remove = []
+        for c in self.active_containers:
             if c.is_completed():
                 self.avail_cpu_pool += c.assignment.cpu
                 self.avail_ram_pool += c.assignment.ram
@@ -166,8 +219,12 @@ class ResourcePool:
 
         for c in to_remove:
             self.active_containers.remove(c)
+
+        # memory consumption tracking involves adding/subtracting many
+        # small changes for containers for each tick).  Small float
+        # rounding errors could eventually add up to big errors, so we
+        # do a more expensive snapshot whenever a container exits.
         if to_remove:
             self._reconcile_consumed_ram()
 
-        self.log_pool_utilization()
         return results

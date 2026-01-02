@@ -1,12 +1,15 @@
 import pytest
 from eudoxia.executor.container import Container
+from eudoxia.executor.resource_pool import ResourcePool
 from eudoxia.executor.assignment import Assignment
 from eudoxia.workload.pipeline import Segment, Operator, Pipeline
 from eudoxia.utils import Priority, DISK_SCAN_GB_SEC
 
 
 class MockPool:
-    """Mock pool for testing containers in isolation."""
+    """Mock pool for testing containers without OOM killing.
+    Use for tests where memory stays within limits.
+    """
     def __init__(self, pool_id=0):
         self.pool_id = pool_id
         self.consumed_ram_gb = 0.0
@@ -28,19 +31,22 @@ def test_container_oom():
         ops.append(op)
         prev_op = op
 
-    # Create assignment and container with limited RAM
+    # Create pool and assignment with limited RAM
+    pool = ResourcePool(pool_id=0, cpu_pool=100, ram_pool=100, ticks_per_second=1)
     assignment = Assignment(
         ops=ops, cpu=10, ram=35,
         priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="oom_test"
     )
-    container = Container(assignment=assignment, pool=MockPool(), ticks_per_second=1)
 
-    # Run the container to completion
-    ticks_executed = 0
+    # Start container via pool
+    pool.run_one_tick([], [assignment])
+    container = pool.active_containers[0]
+
+    # Run until completion
+    ticks_executed = 1  # First tick already done
     while not container.is_completed():
-        container.tick()
+        pool.run_one_tick([], [])
         ticks_executed += 1
-
         assert ticks_executed <= 1000, "Container should complete within 1000 ticks"
 
     # the first 3 operators should run (30 ticks), then the 4th operator (40GB)
@@ -64,15 +70,17 @@ def test_container_oom_transitions_remaining_ops_to_failed():
     op_b.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=100))
     op_c.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=10))
 
+    pool = ResourcePool(pool_id=0, cpu_pool=100, ram_pool=100, ticks_per_second=10)
     assignment = Assignment(
         ops=[op_a, op_b, op_c], cpu=10, ram=50,  # Not enough for op_b
         priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="oom_fail_test"
     )
-    container = Container(assignment=assignment, pool=MockPool(), ticks_per_second=10)
 
-    # Run until OOM
+    # Start container and run until OOM
+    pool.run_one_tick([], [assignment])
+    container = pool.active_containers[0]
     while not container.is_completed():
-        container.tick()
+        pool.run_one_tick([], [])
 
     assert container.error == "OOM"
 
@@ -96,25 +104,19 @@ def test_container_immediate_oom():
         storage_read_gb=0
     ))
 
-    # Create container with only 50GB RAM - immediate OOM
+    # Create pool and assignment with only 50GB RAM - immediate OOM
+    pool = ResourcePool(pool_id=0, cpu_pool=100, ram_pool=500, ticks_per_second=10)
     assignment = Assignment(
         ops=[op], cpu=10, ram=50,  # Only 50GB available
         priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="immediate_oom_test"
     )
-    container = Container(assignment=assignment, pool=MockPool(), ticks_per_second=10)
 
-    # Container is not yet completed - OOM detected on first tick
-    assert not container.is_completed(), "Container should not be completed before first tick"
+    # First tick creates container and runs OOM killer
+    results = pool.run_one_tick([], [assignment])
 
-    # First tick should detect OOM
-    container.tick()
-    assert container.ticks_elapsed() == 1, f"Expected 1 tick before OOM, got {container.ticks_elapsed()}"
-    assert container.error == "OOM", "Container should have OOM error"
-    assert container.is_completed(), "Container should be completed after OOM"
-
-    # Calling tick() again shouldn't break anything
-    container.tick()
-    assert container.is_completed(), "Container should still be completed after extra tick()"
+    # Container should be killed immediately
+    assert len(results) == 1, "Should have one result"
+    assert results[0].error == "OOM", "Container should have OOM error"
 
 
 def test_container_suspension_ticks():

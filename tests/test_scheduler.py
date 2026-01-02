@@ -184,9 +184,10 @@ def test_failed_op_gets_retry_stats():
 
     # Single op pipeline with memory requirement higher than initial allocation will provide
     # Scheduler gives 10% of pool (5 GB), but op needs 10 GB -> OOM
+    # Use enough CPU time so the container has multiple ticks (OOM detected on first tick)
     pipeline = Pipeline("test", Priority.BATCH_PIPELINE)
     op1 = pipeline.new_operator()
-    op1.add_segment(Segment(baseline_cpu_seconds=0.1, memory_gb=10))
+    op1.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=10))
 
     # First tick: pipeline arrives, op1 gets assigned
     suspensions, assignments = scheduler.run_one_tick([], [pipeline])
