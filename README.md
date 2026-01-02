@@ -103,7 +103,9 @@ Any workload generation options in mysim.toml will be ignored since are using an
 
 The executor manages all physical resources and runs containers, typically representing a cluster. An executor manages one or more resource pools, each configured with `cpus_per_pool` CPUs and `ram_gb_per_pool` GB of memory. A resource pool is analogous to a machine: a container must run entirely within a single pool and cannot span multiple pools.
 
-A **container** is an allocation of CPU and memory that executes one or more operators from the same pipeline. When a container has multiple operators, they run sequentially in DAG order; an operator cannot start until its parents have completed. The scheduler specifies the resources and operators for each container; the executor tracks memory usage tick by tick and reports completions and failures. If memory usage exceeds the container's allocation, an out-of-memory (OOM) error occurs and the container fails.
+A **container** is an allocation of CPU and memory that executes one or more operators from the same pipeline. When a container has multiple operators, they run sequentially in DAG order; an operator cannot start until its parents have completed. The scheduler specifies the resources and operators for each container; the executor tracks memory usage tick by tick and reports completions and failures.
+
+If memory usage exceeds the container's allocation, an out-of-memory (OOM) error occurs and the container fails. By default, the executor also enforces strict allocation limits: the sum of all container allocations in a pool cannot exceed the pool's RAM capacity. When `allow_memory_overcommit` is enabled, the scheduler may allocate more memory than physically available, betting that not all containers will reach peak usage simultaneously. If total memory consumption exceeds pool capacity, the executor's OOM killer terminates containers to bring usage back within limits. Containers are scored by `consumption * (consumption / allocation)`, and the highest-scoring container is killed first. This prioritizes killing containers that are both using significant memory and have exceeded their fair share of their allocation.
 
 Containers can be **suspended** to free resources for higher priority work, but only between operator boundaries (not mid-operator). Suspension requires writing current state to disk, which takes time proportional to allocated RAM. Suspended operators return to pending state and can be reassigned later.
 
@@ -119,11 +121,12 @@ An `Assignment` specifies a list of operators, CPU and memory allocations, prior
 
 ### Built-in Schedulers
 
-Three schedulers are included:
+Four schedulers are included:
 
 - `naive`: FIFO ordering, allocates all pool resources to one pipeline at a time, no preemption
 - `priority`: serves work in priority order (query > interactive > batch), can suspend lower priority work to make room for higher priority, may starve batch work under load
 - `priority-pool`: dedicates pools to priority levels (query/interactive to pool 0, batch to pool 1), requires exactly 2 pools, no preemption
+- `overbook`: demonstrates memory overcommit by allocating full pool RAM to each container while only respecting CPU limits (`allow_memory_overcommit` should be enabled)
 
 ### Custom Schedulers
 
@@ -235,3 +238,4 @@ All parameters can be set in the TOML file. Defaults are shown below.
 | `cpus_per_pool` | 64 | CPUs per pool |
 | `ram_gb_per_pool` | 256 | GB of RAM per pool |
 | `multi_operator_containers` | true | Allow multiple operators per container |
+| `allow_memory_overcommit` | false | Allow allocations to exceed pool RAM capacity |

@@ -170,9 +170,11 @@ class Container:
         assert not self._completed
 
         logger.info(f"pool {self.pool_id}: killing container {self.container_id} "
-                    f"(consumption={self.get_current_memory_usage():.1f}GB, "
-                    f"allocation={self.assignment.ram}GB), "
-                    f"reason={error}")
+                    f"(container_consumption={self.get_current_memory_usage():.1f}GB, "
+                    f"container_allocation={self.assignment.ram}GB, "
+                    f"pool_capacity={self.pool.max_ram_pool}GB, "
+                    f"pool_consumption={self.pool.get_consumed_ram_gb()}GB"
+                    f"reason={error})")
 
         for op in self.operators[self._current_op_idx:]:
             op.transition(OperatorState.FAILED)
