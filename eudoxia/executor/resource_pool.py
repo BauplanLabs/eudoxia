@@ -228,3 +228,17 @@ class ResourcePool:
             self._reconcile_consumed_ram()
 
         return results
+
+    def to_dict(self) -> dict:
+        """Serialize resource pool to JSON-compatible dict."""
+        return {
+            "pool_id": self.pool_id,
+            "max_cpu": self.max_cpu_pool,
+            "max_ram_gb": self.max_ram_pool,
+            "avail_cpu": self.avail_cpu_pool,
+            "avail_ram_gb": self.avail_ram_pool,
+            "consumed_ram_gb": self.consumed_ram_gb,
+            "active_containers": [c.to_dict() for c in self.active_containers],
+            "suspending_containers": [c.to_dict() for c in self.suspending_containers],
+            "suspended_containers": [c.to_dict() for c in self.suspended_containers],
+        }

@@ -128,7 +128,7 @@ Four schedulers are included:
 - `priority-pool`: dedicates pools to priority levels (query/interactive to pool 0, batch to pool 1), requires exactly 2 pools, no preemption
 - `overbook`: demonstrates memory overcommit by allocating full pool RAM to each container while only respecting CPU limits (`allow_memory_overcommit` should be enabled)
 
-### Custom Schedulers
+### Custom Schedulers (Python)
 
 To implement a custom scheduler, define two functions using the registration decorators:
 
@@ -173,6 +173,65 @@ ready_ops = pipeline.runtime_status().get_ops(
 ```
 
 When `multi_operator_containers` is enabled, you may want to pass `require_parents_complete=False` to get all assignable operators, then batch them into a single container. The parents don't need to be complete if they will run first in the same container.
+
+### External Schedulers (Not Python)
+
+You can implement an external scheduler in any language by using the `rest` scheduler, which delegates scheduling decisions to an external HTTP server. This is useful for prototyping in other languages or integrating with external systems.
+
+Configuration:
+
+```toml
+scheduler_algo = "rest"
+rest_scheduler_addr = "localhost:8080"
+rest_poll_interval = 1.0
+```
+
+The external scheduler must implement two endpoints:
+
+- `POST /init` - Called once at startup with all TOML parameters as JSON
+- `POST /schedule` - Called each tick (or at `rest_poll_interval`) with current state; returns assignments and suspensions
+
+A reference implementation in Go is provided in `go/naive.go`. To use it:
+
+```bash
+# Terminal 1: Start the external scheduler
+go run ./go/naive.go -port 8080
+
+# Terminal 2: Run the simulation
+eudoxia run mysim.toml
+```
+
+The `/schedule` endpoint receives the current simulation state:
+
+```json
+{
+  "tick": 12345,
+  "sim_time_seconds": 12.345,
+  "results": [...],
+  "new_pipelines": [...],
+  "outstanding_pipelines": [...],
+  "pools": [...]
+}
+```
+
+And returns scheduling decisions:
+
+```json
+{
+  "suspensions": [{"container_id": "c1", "pool_id": 0}],
+  "assignments": [{
+    "operator_ids": ["uuid1"],
+    "cpu": 8,
+    "ram_gb": 32,
+    "pool_id": 0,
+    "priority": "QUERY",
+    "is_resume": false,
+    "force_run": false
+  }]
+}
+```
+
+See `go/naive.go` for the complete JSON schema and a working example.
 
 ## Programmatic Simulation
 
@@ -229,6 +288,8 @@ All parameters can be set in the TOML file. Defaults are shown below.
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `scheduler_algo` | "priority" | Scheduling algorithm to use |
+| `rest_scheduler_addr` | "localhost:8080" | Host:port of external scheduler (when `scheduler_algo = "rest"`) |
+| `rest_poll_interval` | 1.0 | Minimum sim seconds between external scheduler calls |
 
 **Executor**
 

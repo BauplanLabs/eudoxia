@@ -9,6 +9,7 @@ import csv
 from io import StringIO
 from pathlib import Path
 from eudoxia.simulator import run_simulator, parse_args_with_defaults, get_param_defaults
+from eudoxia.scheduler.decorators import SCHEDULING_ALGOS
 from eudoxia.workload.csv_io import CSVWorkloadReader, CSVWorkloadWriter, WorkloadTraceGenerator
 from eudoxia.workload import WorkloadGenerator
 from eudoxia.tools import snap_command, jitter_command, sensitivity_command, sensitivity_sample_command, sensitivity_analysis_plot_command
@@ -302,6 +303,13 @@ def init_command(output_file, force=False, scheduler_name=None):
         print(f"  PYTHONPATH=. eudoxia run -i {scheduler_name} {output_file}")
 
 
+def list_command():
+    """List all registered schedulers."""
+    print("Registered schedulers:")
+    for name in sorted(SCHEDULING_ALGOS.keys()):
+        print(f"  {name}")
+
+
 # entry point if the user just runs "eudoxia".  In that case, argv
 # will be None, but parser.parse_args will check sys.argv.
 #
@@ -334,6 +342,12 @@ def main(argv=None):
     init_parser.add_argument('-s', '--scheduler', metavar='NAME',
                             help='Create a starter scheduler file named NAME.py')
     init_parser.add_argument('-f', '--force', action='store_true', help='Overwrite existing files')
+
+    # List subcommand
+    list_parser = subparsers.add_parser('list', help='List registered schedulers')
+    list_parser.add_argument('-i', '--import', dest='imports', action='append', default=[],
+                            metavar='MODULE', help='Import a module (can be repeated). '
+                            'Useful for listing custom schedulers with @register_scheduler decorators.')
 
     # mkregression subcommand
     regression_parser = subparsers.add_parser('mkregression',
@@ -405,6 +419,14 @@ def main(argv=None):
         gentrace_command(args.params_file, args.output_file, force=args.force)
     elif args.command == 'init':
         init_command(args.output_file, force=args.force, scheduler_name=args.scheduler)
+    elif args.command == 'list':
+        for module_name in args.imports:
+            try:
+                __import__(module_name)
+            except ImportError as e:
+                print(f"Error: Could not import module '{module_name}': {e}", file=sys.stderr)
+                sys.exit(1)
+        list_command()
     elif args.command == 'mkregression':
         mkregression_command(args.params_file, args.target_dir, force=args.force)
     elif args.command == 'tools':
@@ -423,7 +445,7 @@ def main(argv=None):
             tools_parser.print_help()
             sys.exit(1)
     else:
-        print(f"Error: Unknown command '{args.command}'. Available commands: run, gentrace, init, tools", file=sys.stderr)
+        print(f"Error: Unknown command '{args.command}'. Available commands: run, gentrace, init, list, mkregression, tools", file=sys.stderr)
         sys.exit(1)
 
 

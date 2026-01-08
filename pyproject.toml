@@ -11,6 +11,7 @@ dependencies = [
     "pytest",
     "tomlkit",
     "matplotlib",
+    "requests",
 ]
 requires-python = ">=3.12"
 description = "Simulator to test cloud scheduling algorithms"
