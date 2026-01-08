@@ -24,4 +24,7 @@ classifiers = [
 [project.scripts]
 eudoxia = "eudoxia.__main__:main"
 
+[tool.setuptools.packages.find]
+include = ["eudoxia*"]
+
 
