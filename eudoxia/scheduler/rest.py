@@ -7,10 +7,10 @@ serve HTTP requests. The external scheduler must implement two endpoints:
     POST /init     - Called once at startup with TOML parameters as JSON
     POST /schedule - Called each tick with current state; returns assignments/suspensions
 
-A reference implementation in Go is provided in go/naive.go. Usage:
+A reference implementation in Go is provided in go/naive/main.go. Usage:
 
     # Terminal 1: Start the external scheduler
-    go run ./go/naive.go -port 8080
+    cd go && go run ./naive/ -port 8080
 
     # Terminal 2: Run the simulation
     eudoxia run mysim.toml
