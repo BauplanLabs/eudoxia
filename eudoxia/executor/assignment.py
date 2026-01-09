@@ -31,6 +31,18 @@ class ExecutionResult:
         """Returns True if this execution result represents a failure."""
         return self.error is not None
 
+    def to_dict(self) -> dict:
+        """Serialize execution result to JSON-compatible dict."""
+        return {
+            "ops": [str(op.id) for op in self.ops],
+            "cpu": self.cpu,
+            "ram": self.ram,
+            "priority": self.priority.name,
+            "pool_id": self.pool_id,
+            "container_id": self.container_id,
+            "error": self.error,
+        }
+
     def __repr__(self):
         if self.error is not None:
             return f"container failed {self.error}: container={self.container_id} cpus={self.cpu} ram_gb={self.ram}"

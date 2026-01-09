@@ -201,8 +201,12 @@ def get_param_defaults() -> Dict:
         # value is IO heavier
         "cpu_io_ratio": 0.5,
 
-        ### Scheduler Params ###
+        ### General Scheduler Params ###
         "scheduler_algo": "priority",
+
+        # REST (scheduler_algo="rest") scheduler params
+        "rest_scheduler_addr": "localhost:8080",
+        "rest_poll_interval": 1.0,
 
         ### Executor Params ###
         # number of resource pools for executors

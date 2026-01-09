@@ -2,7 +2,7 @@ from typing import List, Optional
 import numpy as np
 from eudoxia.utils import EudoxiaException, DISK_SCAN_GB_SEC, Priority
 from eudoxia.utils.dag import Node, DAG
-from eudoxia.workload.runtime_status import PipelineRuntimeStatus
+from eudoxia.workload.runtime_status import PipelineRuntimeStatus, OperatorState, ASSIGNABLE_STATES
 
 class ScalingFuncs:
     """
@@ -155,6 +155,26 @@ class Operator(Node):
         """Get the current state of this operator."""
         return self.pipeline.runtime_status().operator_states[self]
 
+    def to_dict(self) -> dict:
+        """Serialize operator to JSON-compatible dict.
+
+        Note: Segment details (CPU time, memory, I/O) are not serialized because
+        this information is hidden from the scheduler - it must make decisions
+        without knowing the true resource requirements.
+        """
+        runtime = self.pipeline.runtime_status()
+        state = runtime.operator_states[self]
+        parents_complete = all(
+            runtime.operator_states[p] == OperatorState.COMPLETED
+            for p in self.parents
+        )
+        return {
+            "id": str(self.id),
+            "state": state.value,
+            "is_assignable_state": state in ASSIGNABLE_STATES,
+            "parents_complete": parents_complete,
+        }
+
 
 class Pipeline(Node):
     """
@@ -188,4 +208,16 @@ class Pipeline(Node):
         operator = Operator(self)
         self.values.add_node(operator, parents)
         return operator
+
+    def to_dict(self) -> dict:
+        """Serialize pipeline to JSON-compatible dict."""
+        runtime = self.runtime_status()
+        return {
+            "pipeline_id": self.pipeline_id,
+            "priority": self.priority.name,
+            "arrival_tick": runtime.arrival_tick,
+            "is_complete": runtime.is_pipeline_successful(),
+            "has_failures": runtime.state_counts[OperatorState.FAILED] > 0,
+            "operators": [op.to_dict() for op in self.values],
+        }
 

@@ -208,3 +208,15 @@ class Container:
 
     def is_suspended(self) -> bool:
         return (self._suspend_ticks_left == 0)
+
+    def to_dict(self) -> dict:
+        """Serialize container to JSON-compatible dict."""
+        return {
+            "container_id": self.container_id,
+            "pipeline_id": self.get_pipeline_id(),
+            "operator_ids": [str(op.id) for op in self.operators],
+            "cpu": self.assignment.cpu,
+            "ram_gb": self.assignment.ram,
+            "current_memory_gb": self.get_current_memory_usage(),
+            "priority": self.priority.name,
+        }
