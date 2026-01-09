@@ -191,11 +191,11 @@ The external scheduler must implement two endpoints:
 - `POST /init` - Called once at startup with all TOML parameters as JSON
 - `POST /schedule` - Called each tick (or at `rest_poll_interval`) with current state; returns assignments and suspensions
 
-A reference implementation in Go is provided in `go/naive.go`. To use it:
+A reference implementation in Go is provided in `go/naive/main.go`. To use it:
 
 ```bash
 # Terminal 1: Start the external scheduler
-go run ./go/naive.go -port 8080
+cd go && go run ./naive/ -port 8080
 
 # Terminal 2: Run the simulation
 eudoxia run mysim.toml
@@ -233,7 +233,7 @@ And returns scheduling decisions:
 }
 ```
 
-See `go/naive.go` for the complete JSON schema and a working example.
+See `go/naive/main.go` for a working example and `go/eudoxia/types.go` for the complete JSON schema.
 
 ## Programmatic Simulation
 
