@@ -46,8 +46,8 @@ def rest_init(s):
     s.last_call_sim_time = 0.0
     s.current_tick = 0
 
-    # Track outstanding pipelines (not yet completed)
-    s.outstanding_pipelines: Dict[str, Pipeline] = {}
+    # Track pipelines from previous ticks (some may now be complete)
+    s.other_pipelines: Dict[str, Pipeline] = {}
 
     # Operator lookup table (uuid string -> Operator)
     s.operator_lookup: Dict[str, Operator] = {}
@@ -57,6 +57,10 @@ def rest_init(s):
     s.timing_http = 0.0
     s.timing_parse = 0.0
     s.timing_call_count = 0
+    s.timing_wall_start = time.perf_counter()
+
+    # Compute final tick for end-of-simulation logging
+    s.final_tick = int(s.params["duration"] * s.params["ticks_per_second"])
 
     # Call external init
     url = f"http://{s.rest_addr}/init"
@@ -76,20 +80,24 @@ def rest_scheduler(s, results: List[ExecutionResult],
     current_sim_time = s.current_tick / ticks_per_second
     time_since_last = current_sim_time - s.last_call_sim_time
 
+    # Log timing stats on final tick
+    if s.current_tick == s.final_tick:
+        total = time.perf_counter() - s.timing_wall_start
+        logger.info(f"REST scheduler ({s.timing_call_count} calls): "
+                   f"serialize={s.timing_serialize:.2f}s ({100*s.timing_serialize/total:.1f}%), "
+                   f"http={s.timing_http:.2f}s ({100*s.timing_http/total:.1f}%), "
+                   f"parse={s.timing_parse:.2f}s ({100*s.timing_parse/total:.1f}%)")
+
     # Early return if no events and poll interval not reached
     if not pipelines and not results and time_since_last < s.rest_poll_interval:
         return ([], [])
 
-    # Track new pipelines and their operators
+    s.last_call_sim_time = current_sim_time
+
+    # Register new operators for response parsing
     for p in pipelines:
-        s.outstanding_pipelines[p.pipeline_id] = p
         for op in p.values:
             s.operator_lookup[str(op.id)] = op
-
-    # Remove completed pipelines from outstanding
-    for pipeline_id in list(s.outstanding_pipelines.keys()):
-        if s.outstanding_pipelines[pipeline_id].runtime_status().is_pipeline_successful():
-            del s.outstanding_pipelines[pipeline_id]
 
     # Serialize payload
     t0 = time.perf_counter()
@@ -98,7 +106,7 @@ def rest_scheduler(s, results: List[ExecutionResult],
         "sim_time_seconds": current_sim_time,
         "results": [r.to_dict() for r in results],
         "new_pipelines": [p.to_dict() for p in pipelines],
-        "outstanding_pipelines": [p.to_dict() for p in s.outstanding_pipelines.values()],
+        "other_pipelines": [p.to_dict() for p in s.other_pipelines.values()],
         "pools": [pool.to_dict() for pool in s.executor.pools],
     }
     t1 = time.perf_counter()
@@ -111,8 +119,6 @@ def rest_scheduler(s, results: List[ExecutionResult],
     t2 = time.perf_counter()
     s.timing_http += t2 - t1
 
-    s.last_call_sim_time = current_sim_time
-
     # Parse response into Assignment/Suspend objects
     response = resp.json()
     suspensions = _parse_suspensions(response["suspensions"])
@@ -122,14 +128,15 @@ def rest_scheduler(s, results: List[ExecutionResult],
 
     s.timing_call_count += 1
 
-    # Log timing stats every 100 calls
-    if s.timing_call_count % 100 == 0:
-        total = s.timing_serialize + s.timing_http + s.timing_parse
-        if total > 0:
-            logger.info(f"REST timing ({s.timing_call_count} calls): "
-                       f"serialize={s.timing_serialize:.2f}s ({100*s.timing_serialize/total:.1f}%), "
-                       f"http={s.timing_http:.2f}s ({100*s.timing_http/total:.1f}%), "
-                       f"parse={s.timing_parse:.2f}s ({100*s.timing_parse/total:.1f}%)")
+    # Update pipeline tracking: add new, remove completed
+    for p in pipelines:
+        s.other_pipelines[p.pipeline_id] = p
+    for pipeline_id in list(s.other_pipelines.keys()):
+        pipeline = s.other_pipelines[pipeline_id]
+        if pipeline.runtime_status().is_pipeline_successful():
+            for op in pipeline.values:
+                del s.operator_lookup[str(op.id)]
+            del s.other_pipelines[pipeline_id]
 
     return (suspensions, assignments)
 

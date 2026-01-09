@@ -209,10 +209,12 @@ The `/schedule` endpoint receives the current simulation state:
   "sim_time_seconds": 12.345,
   "results": [...],
   "new_pipelines": [...],
-  "outstanding_pipelines": [...],
+  "other_pipelines": [...],
   "pools": [...]
 }
 ```
+
+The `new_pipelines` and `other_pipelines` lists are disjoint. Pipelines appear in `new_pipelines` on arrival, then in `other_pipelines` on subsequent calls. When a pipeline completes, it appears in `other_pipelines` exactly once with `is_complete: true` before being removed.
 
 And returns scheduling decisions:
 
