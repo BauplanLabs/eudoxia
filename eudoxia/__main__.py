@@ -68,6 +68,8 @@ def run_command(params_file, workload=None):
     for name, pstats in pipeline_stats:
         print(f"  {name:<15} {pstats.arrival_count:>10} {pstats.completion_count:>10} {pstats.mean_latency_seconds:>12.2f} {pstats.p99_latency_seconds:>12.2f}")
     print("  " + "-" * 68)
+    print()
+    print(f"  Adjusted latency: {stats.adjusted_latency():.2f}s")
 
 
 def gentrace_command(params_file, output_file, force=False):

@@ -232,9 +232,12 @@ def sensitivity_command(params_file, workload, output_dir, jitter_seed=None):
         results.append({
             'mutation_type': 'snap',
             'ticks_per_second': tps,
-            **snap_stats._asdict()
+            'adjusted_latency': snap_stats.adjusted_latency(),
+            'mean_latency': snap_stats.pipelines_all.mean_latency_seconds,
+            'p99_latency': snap_stats.pipelines_all.p99_latency_seconds,
+            'failures': snap_stats.failures,
         })
-        print(f"  Throughput: {snap_stats.throughput:.2f}, P99 latency: {snap_stats.p99_latency:.2f}s")
+        print(f"  Adjusted latency: {snap_stats.adjusted_latency():.2f}, Mean latency: {snap_stats.pipelines_all.mean_latency_seconds:.2f}s, Failures: {snap_stats.failures}")
 
         # 2. JITTER mutation
         print(f"\n[2/3] Running JITTER mutation (tps={tps}, delta={1/tps:.6f})...")
@@ -255,9 +258,12 @@ def sensitivity_command(params_file, workload, output_dir, jitter_seed=None):
         results.append({
             'mutation_type': 'jitter',
             'ticks_per_second': tps,
-            **jitter_stats._asdict()
+            'adjusted_latency': jitter_stats.adjusted_latency(),
+            'mean_latency': jitter_stats.pipelines_all.mean_latency_seconds,
+            'p99_latency': jitter_stats.pipelines_all.p99_latency_seconds,
+            'failures': jitter_stats.failures,
         })
-        print(f"  Throughput: {jitter_stats.throughput:.2f}, P99 latency: {jitter_stats.p99_latency:.2f}s")
+        print(f"  Adjusted latency: {jitter_stats.adjusted_latency():.2f}, Mean latency: {jitter_stats.pipelines_all.mean_latency_seconds:.2f}s, Failures: {jitter_stats.failures}")
 
         # 3. TICK mutation (use original workload, just change ticks_per_second)
         print(f"\n[3/3] Running TICK mutation (tps={tps})...")
@@ -273,15 +279,17 @@ def sensitivity_command(params_file, workload, output_dir, jitter_seed=None):
         results.append({
             'mutation_type': 'tick',
             'ticks_per_second': tps,
-            **tick_stats._asdict()
+            'adjusted_latency': tick_stats.adjusted_latency(),
+            'mean_latency': tick_stats.pipelines_all.mean_latency_seconds,
+            'p99_latency': tick_stats.pipelines_all.p99_latency_seconds,
+            'failures': tick_stats.failures,
         })
-        print(f"  Throughput: {tick_stats.throughput:.2f}, P99 latency: {tick_stats.p99_latency:.2f}s")
+        print(f"  Adjusted latency: {tick_stats.adjusted_latency():.2f}, Mean latency: {tick_stats.pipelines_all.mean_latency_seconds:.2f}s, Failures: {tick_stats.failures}")
 
     # Write results to CSV
     output_csv = output_dir_path / "results.csv"
     with open(output_csv, 'w', newline='') as f:
-        fieldnames = ['mutation_type', 'ticks_per_second', 'pipelines_created', 'containers_completed',
-                     'throughput', 'p99_latency', 'assignments', 'suspensions', 'failures', 'failure_error_counts']
+        fieldnames = ['mutation_type', 'ticks_per_second', 'adjusted_latency', 'mean_latency', 'p99_latency', 'failures']
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(results)
@@ -468,8 +476,7 @@ def sensitivity_analysis_plot_command(results_dir):
     df = pd.read_csv(results_csv)
 
     # Metrics to plot
-    metrics = ['pipelines_created', 'containers_completed', 'throughput',
-               'p99_latency', 'assignments', 'suspensions', 'failures']
+    metrics = ['adjusted_latency', 'mean_latency', 'p99_latency', 'failures']
 
     # Find the baseline: tick mutation at max ticks_per_second
     max_tps = df['ticks_per_second'].max()
@@ -517,14 +524,19 @@ def sensitivity_analysis_plot_command(results_dir):
         # Create plot using pandas
         ax = plot_data.plot.line(
             marker='o',
-            figsize=(10, 6),
-            xlabel='Ticks per Second (log scale)',
-            ylabel='Average Absolute Error (%)',
-            title=f'Sensitivity Analysis: {metric}',
+            markersize=4,
+            figsize=(3, 2),
+            xlabel='Ticks per Second',
+            ylabel='Error (%)',
+            title=f'{metric}',
             logx=True,
             legend=True,
-            color={'tick': 'black', 'snap': 'gray', 'jitter': 'red'}
+            color={'tick': 'black', 'snap': 'gray', 'jitter': 'red'},
         )
+        ax.set_title(f'{metric}', fontsize=14)
+        ax.set_xlabel('Ticks per Second', fontsize=12)
+        ax.set_ylabel('Error (%)', fontsize=12)
+        ax.tick_params(labelsize=10)
 
         # Set line widths and styles
         for line in ax.get_lines():
@@ -547,7 +559,7 @@ def sensitivity_analysis_plot_command(results_dir):
         ax.spines['right'].set_visible(False)
 
         # Legend with no frame
-        ax.legend(frameon=False)
+        ax.legend(frameon=False, fontsize=10)
 
         # Save plot as SVG
         output_file = results_dir_path / f"{metric}_errors.svg"
