@@ -2,6 +2,7 @@ import logging
 from typing import List
 from .assignment import Assignment, Suspend, ExecutionResult
 from .container import Container
+from eudoxia.workload import OperatorState
 
 logger = logging.getLogger(__name__)
 
@@ -15,13 +16,15 @@ class ResourcePool:
     A resource pool is analogous to a machine on which we can run containers.
     """
     def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second,
-                 multi_operator_containers=True, allow_memory_overcommit=False, **kwargs):
+                 multi_operator_containers=True, allow_memory_overcommit=False,
+                 enforce_data_locality=False, **kwargs):
         # CONFIGURATION
         self.pool_id = pool_id
         self.ticks_per_second = ticks_per_second
         self.tick_length_secs = 1.0 / ticks_per_second
         self.multi_operator_containers = multi_operator_containers
         self.allow_memory_overcommit = allow_memory_overcommit
+        self.enforce_data_locality = enforce_data_locality
 
         # RESOURCES
 
@@ -161,6 +164,23 @@ class ResourcePool:
         if len(assignments) > 0:
             self.verify_valid_assignment(assignments)
             for a in assignments:
+                if self.enforce_data_locality:
+                    locality_error = None
+                    for op in a.ops:
+                        ok, err = op.pipeline.runtime_status().check_locality(op, self.pool_id)
+                        if not ok:
+                            locality_error = err
+                            break
+                    if locality_error:
+                        for op in a.ops:
+                            op.transition(OperatorState.FAILED)
+                        result = ExecutionResult(ops=a.ops, cpu=a.cpu, ram=a.ram,
+                                                priority=a.priority, pool_id=self.pool_id,
+                                                container_id=a.container_id, error=locality_error)
+                        logger.info(result)
+                        results.append(result)
+                        continue
+
                 # Validate operator count
                 if self.multi_operator_containers:
                     assert len(a.ops) >= 1, "Assignment must have at least 1 operator"
@@ -211,6 +231,11 @@ class ResourcePool:
                                         container_id=c.container_id, error=c.error)
                 logger.info(result)
                 results.append(result)
+
+                # Track where completed operators ran
+                for op in c.operators:
+                    if op.state() == OperatorState.COMPLETED:
+                        op.pipeline.runtime_status().record_operator_pool(op, self.pool_id)
 
                 # TODO: if we're computing p99 latency on this, is it
                 # better to include all containers, or only those that

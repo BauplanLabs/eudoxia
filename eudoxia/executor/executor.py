@@ -16,7 +16,7 @@ class Executor:
     (that is, resource pools).
     """
     def __init__(self, num_pools, cpus_per_pool, ram_gb_per_pool, ticks_per_second,
-                 allow_memory_overcommit=False, **kwargs):
+                 allow_memory_overcommit=False, enforce_data_locality=False, **kwargs):
         self.num_pools = num_pools
         self.cpus_per_pool = cpus_per_pool
         self.ram_gb_per_pool = ram_gb_per_pool
@@ -28,7 +28,9 @@ class Executor:
         for i in range(self.num_pools):
             new_pool = ResourcePool(pool_id=i, cpu_pool=cpus_per_pool, ram_pool=ram_gb_per_pool,
                                    ticks_per_second=self.ticks_per_second,
-                                   allow_memory_overcommit=allow_memory_overcommit, **kwargs)
+                                   allow_memory_overcommit=allow_memory_overcommit,
+                                   enforce_data_locality=enforce_data_locality,
+                                   **kwargs)
             self.pools.append(new_pool)
 
     def get_pool_id_with_max_avail_ram(self) -> int:

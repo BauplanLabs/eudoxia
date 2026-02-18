@@ -54,6 +54,7 @@ class PipelineRuntimeStatus:
         self.pipeline = pipeline
         self.operator_states: Dict['Operator', OperatorState] = {}
         self.state_counts: Dict[OperatorState, int] = {state: 0 for state in OperatorState}
+        self.operator_pool: Dict['Operator', int] = {}
         self.arrival_tick: Optional[int] = None
         self.finish_tick: Optional[int] = None
 
@@ -99,6 +100,27 @@ class PipelineRuntimeStatus:
         self.state_counts[old_state] -= 1
         self.state_counts[new_state] += 1
         self.operator_states[operator] = new_state
+
+    def record_operator_pool(self, operator: 'Operator', pool_id: int):
+        """Record the pool where an operator completed."""
+        self.operator_pool[operator] = pool_id
+
+    def check_locality(self, operator: 'Operator', pool_id: int) -> tuple[bool, str]:
+        """
+        Check data locality constraints for this operator.
+
+        Returns:
+            (True, "") if locality is satisfied, otherwise (False, error_message)
+        """
+        for parent in operator.parents:
+            if self.operator_states.get(parent) == OperatorState.COMPLETED:
+                parent_pool = self.operator_pool.get(parent)
+                if parent_pool is not None and parent_pool != pool_id:
+                    return (
+                        False,
+                        f"Locality violation: parent ran on pool {parent_pool}, child assigned to pool {pool_id}",
+                    )
+        return (True, "")
 
     def is_pipeline_successful(self) -> bool:
         """Check if all operators completed successfully."""
