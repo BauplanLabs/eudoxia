@@ -3,7 +3,7 @@ import numpy as np
 import random
 from typing import List, Iterator, NamedTuple, Optional
 from abc import ABC, abstractmethod
-from eudoxia.utils import Priority
+from eudoxia.utils import Priority, DagShape
 from .pipeline import Pipeline, Operator, Segment
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,8 @@ class WorkloadGenerator(Workload):
     def __init__(self, waiting_seconds_mean, num_pipelines, num_operators,
                  num_segs, cpu_io_ratio, 
                  random_seed, batch_prob, query_prob,
-                 interactive_prob, ticks_per_second, **kwargs):
+                 interactive_prob, ticks_per_second,
+                 dag_linear_prob, dag_branch_in_prob, **kwargs):
 
         assert cpu_io_ratio <= 1.0 and cpu_io_ratio >= 0, "invalid CPU-IO ratio parameter"
         self.ticks_per_second = ticks_per_second
@@ -87,6 +88,14 @@ class WorkloadGenerator(Workload):
             batch_prob,
         ])
         self.priority_probs = prob_array / np.sum(prob_array, dtype=float)
+        # DAG shape sampling is shared across priorities.
+        self.dag_shape_values = [DagShape.LINEAR, DagShape.BRANCH_IN]
+        dag_shape_prob_array = np.array([dag_linear_prob, dag_branch_in_prob])
+        assert np.all(dag_shape_prob_array >= 0), \
+            "DAG shape probabilities must be non-negative"
+        assert np.sum(dag_shape_prob_array, dtype=float) > 0, \
+            "DAG shape probabilities must have positive total mass"
+        self.dag_shape_probs = dag_shape_prob_array / np.sum(dag_shape_prob_array, dtype=float)
         # number of pipelines sent at a time
         self.num_pipelines = num_pipelines
         # average num ops per pipeline
@@ -99,7 +108,6 @@ class WorkloadGenerator(Workload):
         # counter for pipeline IDs
         self.pipeline_counter = 0
 
-    
     def generate_query_segment(self) -> Segment:
         return Segment(baseline_cpu_seconds=15, cpu_scaling="linear3", storage_read_gb=35)
 
@@ -154,44 +162,63 @@ class WorkloadGenerator(Workload):
         pipelines = []
         for _ in range(self.num_pipelines):
             priority = self.rng.choice(a=self.priority_values, p=self.priority_probs)
+            dag_shape = self.rng.choice(a=self.dag_shape_values, p=self.dag_shape_probs)
             self.pipeline_counter += 1
             pipeline_id = f"p{self.pipeline_counter}"
             p = Pipeline(pipeline_id, Priority(priority))
-            if priority == Priority.QUERY.value:
-                op = p.new_operator()
-                seg = self.generate_query_segment()
-                op.add_segment(seg)
 
-                logger.info(f"Pipeline {pipeline_id} generated with Priority {Priority(priority)} and 1 op")
+            if priority == Priority.QUERY.value:
+                curr_num_ops = 1
             else:
                 # TODO: ignoring parallel factor
                 curr_num_ops = int(self.rng.normal(self.num_operators,
-                                                 self.num_operators/4))
+                                                   self.num_operators/4))
 
                 # Normal distribution is continuous and nonzero chance value less
                 # than 1 is chosen; this ensures num operators is always at least 1
                 if curr_num_ops < 1:
                     curr_num_ops = 1
 
-                prev_op = None
-                for i in range(curr_num_ops):
-                    op = p.new_operator([prev_op] if prev_op else None)
-                    # Segments are 1:1 with operators in current execution
-                    curr_num_segs = 1
-                    prev_seg = None
-                    for j in range(curr_num_segs):
-                        # If first node, make it the most IO bound, else have it
-                        # draw randomly from all other segment types
-                        if prev_seg is None:
-                            seg = self.generate_segment_from_val(-2)
-                            op.add_segment(seg)
-                        else:
-                            seg = self.generate_segment_not_heavy_io()
-                            op.add_segment(seg)
-                        prev_seg = seg
-                    prev_op = op
+            created_ops = []
+            for op_idx in range(curr_num_ops):
+                parents = None
+                if dag_shape == DagShape.LINEAR:
+                    if created_ops:
+                        parents = [created_ops[-1]]
+                elif dag_shape == DagShape.BRANCH_IN:
+                    # Branch-in: all early operators are roots, and the final
+                    # operator depends on every earlier operator.
+                    if op_idx == curr_num_ops - 1:
+                        parents = list(created_ops)  # copy parent list for this operator
+                else:
+                    raise ValueError(f"Unsupported DAG shape: {dag_shape}")
 
-                logger.info(f"Pipeline {pipeline_id} generated with Priority {Priority(priority)} and {curr_num_ops} ops")
+                op = p.new_operator(parents)
+                created_ops.append(op)
+
+                if priority == Priority.QUERY.value:
+                    op.add_segment(self.generate_query_segment())
+                    continue
+
+                # Segments are 1:1 with operators in current execution
+                curr_num_segs = 1
+                prev_seg = None
+                for _ in range(curr_num_segs):
+                    # If first node, make it the most IO bound, else have it
+                    # draw randomly from all other segment types
+                    if prev_seg is None:
+                        seg = self.generate_segment_from_val(-2)
+                        op.add_segment(seg)
+                    else:
+                        seg = self.generate_segment_not_heavy_io()
+                        op.add_segment(seg)
+                    prev_seg = seg
+
+            op_word = "op" if curr_num_ops == 1 else "ops"
+            logger.info(
+                f"Pipeline {pipeline_id} generated with Priority {Priority(priority)}, "
+                f"{curr_num_ops} {op_word}, and shape={dag_shape.value}"
+            )
             pipelines.append(p)
         return pipelines
 
