@@ -215,10 +215,9 @@ class WorkloadGenerator(Workload):
                     prev_seg = seg
 
             op_word = "op" if curr_num_ops == 1 else "ops"
-            shape_label = "single-op" if priority == Priority.QUERY.value else dag_shape.value
             logger.info(
                 f"Pipeline {pipeline_id} generated with Priority {Priority(priority)}, "
-                f"{curr_num_ops} {op_word}, and shape={shape_label}"
+                f"{curr_num_ops} {op_word}, and shape={dag_shape.value}"
             )
             pipelines.append(p)
         return pipelines
