@@ -1,10 +1,9 @@
 import pytest
-import numpy as np
 from eudoxia.workload import WorkloadGenerator
 from eudoxia.simulator import get_param_defaults
 
 
-def _generate_non_query_pipelines(dag_linear_prob, dag_branch_in_prob):
+def _generate_interactive_pipelines(dag_linear_prob, dag_branch_in_prob):
     params = get_param_defaults()
     params.update({
         "random_seed": 42,
@@ -27,13 +26,11 @@ def _is_linear_dag(pipeline):
     ops = list(pipeline.values)
     if not ops:
         return False
-    roots = [op for op in ops if len(op.parents) == 0]
-    if len(roots) != 1:
+    if len(ops[0].parents) != 0:
         return False
-    if any(len(op.parents) > 1 for op in ops):
-        return False
-    if any(len(op.children) > 1 for op in ops):
-        return False
+    for i in range(1, len(ops)):
+        if ops[i].parents != [ops[i - 1]]:
+            return False
     return True
 
 
@@ -42,19 +39,17 @@ def _is_branch_in_dag(pipeline):
     if not ops:
         return False
     if len(ops) == 1:
-        return len(ops[0].parents) == 0 and len(ops[0].children) == 0
+        return len(ops[0].parents) == 0
 
-    join_ops = [op for op in ops if len(op.parents) > 0]
-    if len(join_ops) != 1:
-        return False
-    join_op = join_ops[0]
+    join_op = ops[-1]
     if len(join_op.parents) != len(ops) - 1 or len(join_op.children) != 0:
         return False
-
-    root_ops = [op for op in ops if len(op.parents) == 0]
-    if len(root_ops) != len(ops) - 1:
-        return False
-    return all(len(op.children) == 1 and op.children[0] is join_op for op in root_ops)
+    for op in ops[:-1]:
+        if len(op.parents) != 0:
+            return False
+        if op.children != [join_op]:
+            return False
+    return True
 
 
 def test_workload_generator_determinism():
@@ -115,15 +110,15 @@ def test_workload_generator_determinism():
     assert pipeline_cases >= 5, f"Only got {pipeline_cases} pipeline generation events in {tick} ticks"
 
 
-def test_dag_shape_linear_when_branch_in_prob_zero():
-    pipelines = _generate_non_query_pipelines(dag_linear_prob=1.0, dag_branch_in_prob=0.0)
+def test_dag_linear_structure():
+    pipelines = _generate_interactive_pipelines(dag_linear_prob=1.0, dag_branch_in_prob=0.0)
     assert len(pipelines) == 10
     for p in pipelines:
         assert _is_linear_dag(p), f"Expected linear DAG, got structure with {len(list(p.values))} ops"
 
 
-def test_dag_shape_branch_in_when_branch_in_prob_one():
-    pipelines = _generate_non_query_pipelines(dag_linear_prob=0.0, dag_branch_in_prob=1.0)
+def test_dag_branch_in_structure():
+    pipelines = _generate_interactive_pipelines(dag_linear_prob=0.0, dag_branch_in_prob=1.0)
     assert len(pipelines) == 10
     for p in pipelines:
         assert _is_branch_in_dag(p), f"Expected branch-in DAG, got structure with {len(list(p.values))} ops"

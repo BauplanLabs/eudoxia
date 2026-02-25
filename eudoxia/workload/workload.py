@@ -88,7 +88,7 @@ class WorkloadGenerator(Workload):
             batch_prob,
         ])
         self.priority_probs = prob_array / np.sum(prob_array, dtype=float)
-        # DAG shape is only used for non-query pipelines. Query remains single-op.
+        # DAG shape sampling is shared across priorities.
         self.dag_shape_values = [DagShape.LINEAR, DagShape.BRANCH_IN]
         dag_shape_prob_array = np.array([dag_linear_prob, dag_branch_in_prob])
         assert np.all(dag_shape_prob_array >= 0), \
@@ -162,64 +162,64 @@ class WorkloadGenerator(Workload):
         pipelines = []
         for _ in range(self.num_pipelines):
             priority = self.rng.choice(a=self.priority_values, p=self.priority_probs)
-            # Keep random metadata sampling together for easier reasoning/debugging.
-            dag_shape = None
-            if priority != Priority.QUERY.value:
-                dag_shape = self.rng.choice(a=self.dag_shape_values, p=self.dag_shape_probs)
+            dag_shape = self.rng.choice(a=self.dag_shape_values, p=self.dag_shape_probs)
             self.pipeline_counter += 1
             pipeline_id = f"p{self.pipeline_counter}"
             p = Pipeline(pipeline_id, Priority(priority))
-            if priority == Priority.QUERY.value:
-                op = p.new_operator()
-                seg = self.generate_query_segment()
-                op.add_segment(seg)
 
-                logger.info(f"Pipeline {pipeline_id} generated with Priority {Priority(priority)} and 1 op")
+            if priority == Priority.QUERY.value:
+                curr_num_ops = 1
             else:
                 # TODO: ignoring parallel factor
                 curr_num_ops = int(self.rng.normal(self.num_operators,
-                                                 self.num_operators/4))
+                                                   self.num_operators/4))
 
                 # Normal distribution is continuous and nonzero chance value less
                 # than 1 is chosen; this ensures num operators is always at least 1
                 if curr_num_ops < 1:
                     curr_num_ops = 1
 
-                created_ops = []
-                for op_idx in range(curr_num_ops):
-                    parents = None
-                    if dag_shape == DagShape.LINEAR:
-                        if created_ops:
-                            parents = [created_ops[-1]]
-                    elif dag_shape == DagShape.BRANCH_IN:
-                        # Build branch-in shape:
-                        # - N=1: single root
-                        # - N>1: N-1 roots feeding one final join op
-                        if op_idx == curr_num_ops - 1 and created_ops:
-                            parents = list(created_ops)
+            created_ops = []
+            for op_idx in range(curr_num_ops):
+                parents = None
+                if dag_shape == DagShape.LINEAR:
+                    if created_ops:
+                        parents = [created_ops[-1]]
+                elif dag_shape == DagShape.BRANCH_IN:
+                    # Branch-in: all early operators are roots, and the final
+                    # operator depends on every earlier operator.
+                    if op_idx == curr_num_ops - 1:
+                        parents = list(created_ops)  # copy parent list for this operator
+                else:
+                    raise ValueError(f"Unsupported DAG shape: {dag_shape}")
+
+                op = p.new_operator(parents)
+                created_ops.append(op)
+
+                if priority == Priority.QUERY.value:
+                    op.add_segment(self.generate_query_segment())
+                    continue
+
+                # Segments are 1:1 with operators in current execution
+                curr_num_segs = 1
+                prev_seg = None
+                for _ in range(curr_num_segs):
+                    # If first node, make it the most IO bound, else have it
+                    # draw randomly from all other segment types
+                    if prev_seg is None:
+                        seg = self.generate_segment_from_val(-2)
+                        op.add_segment(seg)
                     else:
-                        raise ValueError(f"Unsupported DAG shape: {dag_shape}")
+                        seg = self.generate_segment_not_heavy_io()
+                        op.add_segment(seg)
+                    prev_seg = seg
 
-                    op = p.new_operator(parents)
-                    # Segments are 1:1 with operators in current execution
-                    curr_num_segs = 1
-                    prev_seg = None
-                    for _ in range(curr_num_segs):
-                        # If first node, make it the most IO bound, else have it
-                        # draw randomly from all other segment types
-                        if prev_seg is None:
-                            seg = self.generate_segment_from_val(-2)
-                            op.add_segment(seg)
-                        else:
-                            seg = self.generate_segment_not_heavy_io()
-                            op.add_segment(seg)
-                        prev_seg = seg
-                    created_ops.append(op)
-
-                logger.info(
-                    f"Pipeline {pipeline_id} generated with Priority {Priority(priority)} "
-                    f"and {curr_num_ops} ops, shape={dag_shape.value}"
-                )
+            op_word = "op" if curr_num_ops == 1 else "ops"
+            shape_label = "single-op" if priority == Priority.QUERY.value else dag_shape.value
+            logger.info(
+                f"Pipeline {pipeline_id} generated with Priority {Priority(priority)}, "
+                f"{curr_num_ops} {op_word}, and shape={shape_label}"
+            )
             pipelines.append(p)
         return pipelines
 
