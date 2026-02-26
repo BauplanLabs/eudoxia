@@ -16,8 +16,8 @@ class ResourcePool:
     A resource pool is analogous to a machine on which we can run containers.
     """
     def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second,
-                 multi_operator_containers=True, allow_memory_overcommit=False,
-                 enforce_data_locality=False, **kwargs):
+                 multi_operator_containers, allow_memory_overcommit,
+                 enforce_data_locality, **kwargs):
         # CONFIGURATION
         self.pool_id = pool_id
         self.ticks_per_second = ticks_per_second
@@ -172,14 +172,7 @@ class ResourcePool:
                             locality_error = err
                             break
                     if locality_error:
-                        for op in a.ops:
-                            op.transition(OperatorState.FAILED)
-                        result = ExecutionResult(ops=a.ops, cpu=a.cpu, ram=a.ram,
-                                                priority=a.priority, pool_id=self.pool_id,
-                                                container_id=a.container_id, error=locality_error)
-                        logger.info(result)
-                        results.append(result)
-                        continue
+                        raise AssertionError(locality_error)
 
                 # Validate operator count
                 if self.multi_operator_containers:
@@ -235,7 +228,7 @@ class ResourcePool:
                 # Track where completed operators ran
                 for op in c.operators:
                     if op.state() == OperatorState.COMPLETED:
-                        op.pipeline.runtime_status().record_operator_pool(op, self.pool_id)
+                        op.pipeline.runtime_status().operator_status[op].pool_id = self.pool_id
 
                 # TODO: if we're computing p99 latency on this, is it
                 # better to include all containers, or only those that

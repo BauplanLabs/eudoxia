@@ -153,7 +153,7 @@ class Operator(Node):
 
     def state(self) -> 'OperatorState':
         """Get the current state of this operator."""
-        return self.pipeline.runtime_status().operator_states[self]
+        return self.pipeline.runtime_status().operator_status[self].state
 
     def to_dict(self) -> dict:
         """Serialize operator to JSON-compatible dict.
@@ -163,9 +163,9 @@ class Operator(Node):
         without knowing the true resource requirements.
         """
         runtime = self.pipeline.runtime_status()
-        state = runtime.operator_states[self]
+        state = runtime.operator_status[self].state
         parents_complete = all(
-            runtime.operator_states[p] == OperatorState.COMPLETED
+            runtime.operator_status[p].state == OperatorState.COMPLETED
             for p in self.parents
         )
         return {
