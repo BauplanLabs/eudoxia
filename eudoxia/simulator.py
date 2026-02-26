@@ -287,6 +287,24 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     if workload is None:
         workload = WorkloadGenerator(**params)
 
+    # --- TASK 1: TRACE DURATION WARNING ---
+    # WorkloadTrace objects hold the loaded pipelines in an internal list
+    # if hasattr(workload, 'pipelines') and workload.pipelines:
+    #     # Find the latest arrival time across all pipelines
+    #     max_arrival = max(p.arrival_seconds for p in workload.pipelines)
+    #     # Get the simulation duration from the TOML parameters
+    #     duration = params.get("duration", 600)
+        
+    #     if max_arrival > duration:
+    #         import logging
+    #         logger = logging.getLogger(__name__)
+    #         logger.warning(
+    #             f"Trace contains events up to {max_arrival:.1f}s, "
+    #             f"but simulation duration is set to {duration}s. "
+    #             "Events after the duration limit will be ignored."
+    #         )
+    # --------------------------------------------
+
     executor = Executor(**params)
     scheduler = Scheduler(executor, **params)
 
@@ -313,6 +331,11 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     num_failures = 0
     failure_error_counts = defaultdict(int)
     executor_results = []
+
+    # ------------------------------------------------------------
+    all_queueing_delays: List[float] = [] # ADD THIS LINE HERE
+    # -----------------------------------------------------------
+
     outstanding_pipelines: Dict[str, Pipeline] = {}
     pipeline_arrivals_by_priority: Dict[Priority, int] = {
         Priority.QUERY: 0,
@@ -341,6 +364,15 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         suspensions, assignments = scheduler.run_one_tick(executor_results, new_pipelines)
         executor_results = executor.run_one_tick(suspensions, assignments)
 
+        # --- TASK 2: RECORD FIRST ASSIGNMENT ---
+        for assignment in assignments:
+            # An assignment contains a list of operators (ops)
+            for op in assignment.ops:
+                # If this pipeline hasn't been assigned a tick yet, record it now
+                if op.pipeline.first_assignment_tick is None:
+                    op.pipeline.first_assignment_tick = tick_number
+        #---------------------------------------
+
         # track stats
         num_pipelines_created += len(new_pipelines)
         num_assignments += len(assignments)
@@ -356,6 +388,17 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
                 pipeline = outstanding_pipelines[pipeline_id]
                 if pipeline.runtime_status().is_pipeline_successful():
                     pipeline.runtime_status().record_finish(tick_number)
+
+
+                    # --- ADD THIS SPECIFIC BLOCK ---
+                    # Only calculate if we actually recorded a start time
+                    if pipeline.first_assignment_tick is not None:
+                        # (Start Tick - Arrival Tick) / Precision = Delay in Seconds
+                        arrival_tick = pipeline.runtime_status().arrival_tick
+                        q_delay_seconds = (pipeline.first_assignment_tick - arrival_tick) / ticks_per_second
+                        all_queueing_delays.append(q_delay_seconds)
+                    # -------------------------------
+
                     latency_ticks = pipeline.runtime_status().get_latency_ticks()
                     pipeline_latencies_by_priority[pipeline.priority].append(latency_ticks)
                     del outstanding_pipelines[pipeline_id]
@@ -390,6 +433,15 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         pipeline_arrivals_by_priority[Priority.BATCH_PIPELINE],
         pipeline_latencies_by_priority[Priority.BATCH_PIPELINE],
         ticks_per_second)
+    
+
+    # --- ADD THIS BLOCK HERE ---
+    # Calculate the average queueing delay from your collected list
+    mean_q_delay = sum(all_queueing_delays) / len(all_queueing_delays) if all_queueing_delays else 0.0
+    
+    # This prints the specific metric Tyler requested
+    print(f"\n[STATS] Mean Initial Queueing Delay: {mean_q_delay:.4f}s")
+    # ---------------------------
 
     return SimulatorStats(
         pipelines_created=num_pipelines_created,

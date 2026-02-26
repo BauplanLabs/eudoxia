@@ -189,6 +189,10 @@ class Pipeline(Node):
         self.priority: Priority = priority
         self.values: DAG[Operator] = DAG()
 
+        # ADD THIS LINE HERE (Line 192):--------------------------------------------------
+        self.first_assignment_tick = None
+        #-----------------------------------------------
+
         # MUTABLE: Execution state tracking (lazy-initialized via runtime_status() method)
         self._runtime_status: Optional['PipelineRuntimeStatus'] = None
 
