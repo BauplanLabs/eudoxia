@@ -74,7 +74,7 @@ class PipelineRuntimeStatus:
         assert self.arrival_tick is None, "arrival_tick already recorded"
         self.arrival_tick = tick
 
-    def check_transition(self, operator: 'Operator', new_state: OperatorState) -> tuple[bool, Optional[str]]:
+    def check_transition(self, operator: 'Operator', new_state: OperatorState, pool_id: Optional[int] = None, enforce_locality: bool = False) -> tuple[bool, Optional[str]]:
         """
         Check if a state transition is valid.
 
@@ -86,6 +86,13 @@ class PipelineRuntimeStatus:
         if new_state not in VALID_TRANSITIONS[current_state]:
             return (False, f"Cannot transition operator {operator.id} in pipeline {operator.pipeline.pipeline_id} from {current_state.value} to {new_state.value}")
 
+        # Check suspend/resume locality: if this op was previously run on a specific
+        # pool, it must be assigned back to the same pool
+        if enforce_locality and new_state == OperatorState.ASSIGNED and pool_id is not None:
+            existing_pool = self.operator_status[operator].pool_id
+            if existing_pool is not None and existing_pool != pool_id:
+                return (False, f"Locality violation: operator was previously run on pool {existing_pool}, assigned to pool {pool_id}")
+
         # Dependencies checked when starting execution, not when assigning
         if new_state == OperatorState.RUNNING:
             for parent in operator.parents:
@@ -94,14 +101,14 @@ class PipelineRuntimeStatus:
 
         return (True, None)
 
-    def transition(self, operator: 'Operator', new_state: OperatorState, pool_id: Optional[int] = None):
+    def transition(self, operator: 'Operator', new_state: OperatorState, pool_id: Optional[int] = None, enforce_locality: bool = False):
         """
         Transition an operator to a new state.
 
         Raises:
             AssertionError: If the transition is invalid
         """
-        can_transition, error = self.check_transition(operator, new_state)
+        can_transition, error = self.check_transition(operator, new_state, pool_id=pool_id, enforce_locality=enforce_locality)
         assert can_transition, error
         old_state = self.operator_status[operator].state
         self.state_counts[old_state] -= 1

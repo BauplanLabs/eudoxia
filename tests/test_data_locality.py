@@ -57,3 +57,24 @@ def test_simulation_without_locality_enforcement_has_no_locality_errors():
 
     for error in stats.failure_error_counts.keys():
         assert "Locality violation" not in error
+
+
+def test_suspend_resume_locality_check():
+    """When enforce_data_locality=True, resuming a suspended op on a different pool raises AssertionError."""
+    from eudoxia.workload.runtime_status import OperatorState
+    pipeline = Pipeline("p1", Priority.BATCH_PIPELINE)
+    op = pipeline.new_operator()
+    status = pipeline.runtime_status()
+
+    # Simulate op being assigned and run on pool 0
+    op.transition(OperatorState.ASSIGNED, pool_id=0)
+    op.transition(OperatorState.SUSPENDING)
+    op.transition(OperatorState.PENDING)
+
+    # Trying to resume on a different pool with enforce_locality=True should fail
+    import pytest
+    with pytest.raises(AssertionError, match="Locality violation"):
+        op.transition(OperatorState.ASSIGNED, pool_id=1, enforce_locality=True)
+
+    # Resuming on the same pool should succeed
+    op.transition(OperatorState.ASSIGNED, pool_id=0, enforce_locality=True)

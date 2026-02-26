@@ -22,6 +22,7 @@ class Executor:
         self.ram_gb_per_pool = ram_gb_per_pool
         self.ticks_per_second = ticks_per_second
         self.tick_length_secs = 1.0 / ticks_per_second
+        self.enforce_data_locality = enforce_data_locality
 
         # Initialize pools with identical resources
         self.pools: List[ResourcePool] = []

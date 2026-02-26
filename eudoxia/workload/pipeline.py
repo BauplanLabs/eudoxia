@@ -147,9 +147,9 @@ class Operator(Node):
         """Get all segments in this operator"""
         return self.values
 
-    def transition(self, new_state, pool_id=None):
+    def transition(self, new_state, pool_id=None, enforce_locality=False):
         """Transition this operator to a new state."""
-        self.pipeline.runtime_status().transition(self, new_state, pool_id=pool_id)
+        self.pipeline.runtime_status().transition(self, new_state, pool_id=pool_id, enforce_locality=enforce_locality)
 
     def state(self) -> 'OperatorState':
         """Get the current state of this operator."""

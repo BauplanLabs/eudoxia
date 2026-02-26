@@ -188,7 +188,8 @@ def priority_scheduler(s, results: List[ExecutionResult],
                     continue
                 asgmnt = Assignment(ops=op_list, cpu=job_cpu, ram=job_ram,
                                     priority=job.priority, pool_id=pool_id,
-                                    pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown_pipeline")
+                                    pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown_pipeline",
+                                    enforce_locality=s.executor.enforce_data_locality)
                 pool_stats[pool_id]["avail_cpu"] -= job_cpu
                 pool_stats[pool_id]["avail_ram"] -= job_ram
                 to_start.append(asgmnt)
@@ -201,7 +202,8 @@ def priority_scheduler(s, results: List[ExecutionResult],
                 job_ram = rs.old_ram
                 asgmnt = Assignment(ops=op_list, cpu=job_cpu, ram=job_ram,
                                     priority=job.priority, pool_id=pool_id,
-                                    pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown_pipeline")
+                                    pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown_pipeline",
+                                    enforce_locality=s.executor.enforce_data_locality)
                 pool_stats[pool_id]["avail_cpu"] -= job_cpu
                 pool_stats[pool_id]["avail_ram"] -= job_ram
                 to_start.append(asgmnt)
@@ -214,7 +216,8 @@ def priority_scheduler(s, results: List[ExecutionResult],
                     job_ram = pool_stats[pool_id]["avail_ram"]
                 asgmnt = Assignment(ops=op_list, cpu=job_cpu, ram=job_ram,
                                     priority=job.priority, pool_id=pool_id,
-                                    pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown_pipeline")
+                                    pipeline_id=job.pipeline.pipeline_id if job.pipeline else "unknown_pipeline",
+                                    enforce_locality=s.executor.enforce_data_locality)
                 pool_stats[pool_id]["avail_cpu"] -= job_cpu
                 pool_stats[pool_id]["avail_ram"] -= job_ram
                 to_start.append(asgmnt)
