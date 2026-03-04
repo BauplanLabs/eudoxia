@@ -201,6 +201,7 @@ def get_param_defaults() -> Dict:
         # defaults keep historical behavior (all non-query DAGs are linear).
         "dag_linear_prob": 1.0,
         "dag_branch_in_prob": 0.0,
+        "dag_branch_out_prob": 0.0,
         # value between 0 and 1 indicating on average how IO heavy a segment is. Low
         # value is IO heavier
         "cpu_io_ratio": 0.5,
