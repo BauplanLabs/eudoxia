@@ -150,7 +150,8 @@ class PipelineRuntimeStatus:
             allowed_states = state
 
         result = []
-        for op, op_state in ((op, s.state) for op, s in self.operator_status.items()):
+        for op, status in self.operator_status.items():
+            op_state = status.state
             if op_state not in allowed_states:
                 continue
             if require_parents_complete and not all(

@@ -218,7 +218,7 @@ class ResourcePool:
                 # Track where completed operators ran
                 for op in c.operators:
                     if op.state() == OperatorState.COMPLETED:
-                        op.pipeline.runtime_status().operator_status[op].pool_id = self.pool_id
+                        op.update_completed_pool(self.pool_id)
 
                 # TODO: if we're computing p99 latency on this, is it
                 # better to include all containers, or only those that

@@ -155,6 +155,10 @@ class Operator(Node):
         """Get the current state of this operator."""
         return self.pipeline.runtime_status().operator_status[self].state
 
+    def update_completed_pool(self, pool_id: int):
+        """Record the pool where this operator completed."""
+        self.pipeline.runtime_status().operator_status[self].pool_id = pool_id
+
     def to_dict(self) -> dict:
         """Serialize operator to JSON-compatible dict.
 
