@@ -12,6 +12,14 @@ class OperatorState(Enum):
     FAILED = "failed"             # Execution failed (retry is possible)
 
 
+class OperatorStatus:
+    """Tracks both the execution state and pool assignment for an operator."""
+
+    def __init__(self):
+        self.state: OperatorState = OperatorState.PENDING
+        self.pool_id: Optional[int] = None
+
+
 # Valid state transitions for each state
 VALID_TRANSITIONS: Dict[OperatorState, List[OperatorState]] = {
     OperatorState.PENDING: [
@@ -52,13 +60,13 @@ class PipelineRuntimeStatus:
 
     def __init__(self, pipeline: 'Pipeline'):
         self.pipeline = pipeline
-        self.operator_states: Dict['Operator', OperatorState] = {}
+        self.operator_status: Dict['Operator', OperatorStatus] = {}
         self.state_counts: Dict[OperatorState, int] = {state: 0 for state in OperatorState}
         self.arrival_tick: Optional[int] = None
         self.finish_tick: Optional[int] = None
 
         for operator in pipeline.values:
-            self.operator_states[operator] = OperatorState.PENDING
+            self.operator_status[operator] = OperatorStatus()
             self.state_counts[OperatorState.PENDING] += 1
 
     def record_arrival(self, tick: int):
@@ -66,43 +74,52 @@ class PipelineRuntimeStatus:
         assert self.arrival_tick is None, "arrival_tick already recorded"
         self.arrival_tick = tick
 
-    def check_transition(self, operator: 'Operator', new_state: OperatorState) -> tuple[bool, Optional[str]]:
+    def check_transition(self, operator: 'Operator', new_state: OperatorState, pool_id: Optional[int] = None, enforce_locality: bool = False) -> tuple[bool, Optional[str]]:
         """
         Check if a state transition is valid.
 
         Returns:
             Tuple of (can_transition, error_reason)
         """
-        current_state = self.operator_states[operator]
+        current_state = self.operator_status[operator].state
 
         if new_state not in VALID_TRANSITIONS[current_state]:
             return (False, f"Cannot transition operator {operator.id} in pipeline {operator.pipeline.pipeline_id} from {current_state.value} to {new_state.value}")
 
+        # Check suspend/resume locality: if this op was previously run on a specific
+        # pool, it must be assigned back to the same pool
+        if enforce_locality and new_state == OperatorState.ASSIGNED and pool_id is not None:
+            existing_pool = self.operator_status[operator].pool_id
+            if existing_pool is not None and existing_pool != pool_id:
+                return (False, f"Locality violation: operator was previously run on pool {existing_pool}, assigned to pool {pool_id}")
+
         # Dependencies checked when starting execution, not when assigning
         if new_state == OperatorState.RUNNING:
             for parent in operator.parents:
-                if self.operator_states[parent] != OperatorState.COMPLETED:
+                if self.operator_status[parent].state != OperatorState.COMPLETED:
                     return (False, "Dependencies not satisfied")
 
         return (True, None)
 
-    def transition(self, operator: 'Operator', new_state: OperatorState):
+    def transition(self, operator: 'Operator', new_state: OperatorState, pool_id: Optional[int] = None, enforce_locality: bool = False):
         """
         Transition an operator to a new state.
 
         Raises:
             AssertionError: If the transition is invalid
         """
-        can_transition, error = self.check_transition(operator, new_state)
+        can_transition, error = self.check_transition(operator, new_state, pool_id=pool_id, enforce_locality=enforce_locality)
         assert can_transition, error
-        old_state = self.operator_states[operator]
+        old_state = self.operator_status[operator].state
         self.state_counts[old_state] -= 1
         self.state_counts[new_state] += 1
-        self.operator_states[operator] = new_state
+        self.operator_status[operator].state = new_state
+        if pool_id is not None:
+            self.operator_status[operator].pool_id = pool_id
 
     def is_pipeline_successful(self) -> bool:
         """Check if all operators completed successfully."""
-        return self.state_counts[OperatorState.COMPLETED] == len(self.operator_states)
+        return self.state_counts[OperatorState.COMPLETED] == len(self.operator_status)
 
     def record_finish(self, tick: int):
         """Record the tick at which this pipeline finished."""
@@ -133,11 +150,12 @@ class PipelineRuntimeStatus:
             allowed_states = state
 
         result = []
-        for op, op_state in self.operator_states.items():
+        for op, status in self.operator_status.items():
+            op_state = status.state
             if op_state not in allowed_states:
                 continue
             if require_parents_complete and not all(
-                self.operator_states[p] == OperatorState.COMPLETED for p in op.parents
+                self.operator_status[p].state == OperatorState.COMPLETED for p in op.parents
             ):
                 continue
             result.append(op)

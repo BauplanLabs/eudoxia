@@ -18,7 +18,9 @@ def test_resource_pool_basic():
         cpu_pool=10,
         ram_pool=100,
         ticks_per_second=10,
-        multi_operator_containers=True
+        multi_operator_containers=True,
+        allow_memory_overcommit=False,
+        enforce_data_locality=False,
     )
 
     # Create pipeline and operator for successful container
@@ -93,7 +95,9 @@ def test_resource_pool_dependencies():
         cpu_pool=10,
         ram_pool=100,
         ticks_per_second=10,
-        multi_operator_containers=True
+        multi_operator_containers=True,
+        allow_memory_overcommit=False,
+        enforce_data_locality=False,
     )
 
     # Create pipeline with A -> B
@@ -155,24 +159,24 @@ def test_runtime_status_state_transitions():
     status = pipeline.runtime_status()
 
     # Initially PENDING
-    assert status.operator_states[op] == OperatorState.PENDING
+    assert status.operator_status[op].state == OperatorState.PENDING
 
     # Transition to ASSIGNED
     op.transition(OperatorState.ASSIGNED)
-    assert status.operator_states[op] == OperatorState.ASSIGNED
+    assert status.operator_status[op].state == OperatorState.ASSIGNED
 
     # Cannot double assign
     with pytest.raises(AssertionError):
         op.transition(OperatorState.ASSIGNED)
-        assert status.operator_states[op] == OperatorState.ASSIGNED
+        assert status.operator_status[op].state == OperatorState.ASSIGNED
 
     # Transition to RUNNING
     op.transition(OperatorState.RUNNING)
-    assert status.operator_states[op] == OperatorState.RUNNING
+    assert status.operator_status[op].state == OperatorState.RUNNING
 
     # Transition to COMPLETED
     op.transition(OperatorState.COMPLETED)
-    assert status.operator_states[op] == OperatorState.COMPLETED
+    assert status.operator_status[op].state == OperatorState.COMPLETED
 
     # Pipeline should be successful
     assert status.is_pipeline_successful()
@@ -193,6 +197,9 @@ def test_memory_allocated_vs_consumed():
         cpus_per_pool=10,
         ram_gb_per_pool=ram_per_pool,
         ticks_per_second=ticks_per_second,
+        multi_operator_containers=True,
+        allow_memory_overcommit=False,
+        enforce_data_locality=False,
     )
     tick_length = 1.0 / ticks_per_second
 
@@ -257,6 +264,7 @@ def test_memory_overcommit_kills_highest_scorer():
         ticks_per_second=ticks_per_second,
         multi_operator_containers=True,
         allow_memory_overcommit=True,
+        enforce_data_locality=False,
     )
     tick_length = 1.0 / ticks_per_second
 

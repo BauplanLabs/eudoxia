@@ -15,6 +15,18 @@ class MockPool:
         self.consumed_ram_gb = 0.0
 
 
+def make_pool(pool_id=0, cpu_pool=100, ram_pool=100, ticks_per_second=1):
+    return ResourcePool(
+        pool_id=pool_id,
+        cpu_pool=cpu_pool,
+        ram_pool=ram_pool,
+        ticks_per_second=ticks_per_second,
+        multi_operator_containers=True,
+        allow_memory_overcommit=False,
+        enforce_data_locality=False,
+    )
+
+
 def test_container_oom():
     """Test that OOM in first operator prevents subsequent operators from being calculated"""
 
@@ -32,7 +44,7 @@ def test_container_oom():
         prev_op = op
 
     # Create pool and assignment with limited RAM
-    pool = ResourcePool(pool_id=0, cpu_pool=100, ram_pool=100, ticks_per_second=1)
+    pool = make_pool()
     assignment = Assignment(
         ops=ops, cpu=10, ram=35,
         priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="oom_test"
@@ -70,7 +82,7 @@ def test_container_oom_transitions_remaining_ops_to_failed():
     op_b.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=100))
     op_c.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=10))
 
-    pool = ResourcePool(pool_id=0, cpu_pool=100, ram_pool=100, ticks_per_second=10)
+    pool = make_pool(ticks_per_second=10)
     assignment = Assignment(
         ops=[op_a, op_b, op_c], cpu=10, ram=50,  # Not enough for op_b
         priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="oom_fail_test"
@@ -86,9 +98,9 @@ def test_container_oom_transitions_remaining_ops_to_failed():
 
     # All operators should be FAILED (not stuck in ASSIGNED)
     status = pipeline.runtime_status()
-    assert status.operator_states[op_a] == OperatorState.COMPLETED
-    assert status.operator_states[op_b] == OperatorState.FAILED
-    assert status.operator_states[op_c] == OperatorState.FAILED
+    assert status.operator_status[op_a].state == OperatorState.COMPLETED
+    assert status.operator_status[op_b].state == OperatorState.FAILED
+    assert status.operator_status[op_c].state == OperatorState.FAILED
 
 
 def test_container_immediate_oom():
@@ -105,7 +117,7 @@ def test_container_immediate_oom():
     ))
 
     # Create pool and assignment with only 50GB RAM - immediate OOM
-    pool = ResourcePool(pool_id=0, cpu_pool=100, ram_pool=500, ticks_per_second=10)
+    pool = make_pool(ram_pool=500, ticks_per_second=10)
     assignment = Assignment(
         ops=[op], cpu=10, ram=50,  # Only 50GB available
         priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="immediate_oom_test"

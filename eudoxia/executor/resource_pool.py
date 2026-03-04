@@ -2,6 +2,7 @@ import logging
 from typing import List
 from .assignment import Assignment, Suspend, ExecutionResult
 from .container import Container
+from eudoxia.workload import OperatorState
 
 logger = logging.getLogger(__name__)
 
@@ -15,13 +16,15 @@ class ResourcePool:
     A resource pool is analogous to a machine on which we can run containers.
     """
     def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second,
-                 multi_operator_containers=True, allow_memory_overcommit=False, **kwargs):
+                 multi_operator_containers, allow_memory_overcommit,
+                 enforce_data_locality, **kwargs):
         # CONFIGURATION
         self.pool_id = pool_id
         self.ticks_per_second = ticks_per_second
         self.tick_length_secs = 1.0 / ticks_per_second
         self.multi_operator_containers = multi_operator_containers
         self.allow_memory_overcommit = allow_memory_overcommit
+        self.enforce_data_locality = enforce_data_locality
 
         # RESOURCES
 
@@ -211,6 +214,11 @@ class ResourcePool:
                                         container_id=c.container_id, error=c.error)
                 logger.info(result)
                 results.append(result)
+
+                # Track where completed operators ran
+                for op in c.operators:
+                    if op.state() == OperatorState.COMPLETED:
+                        op.update_completed_pool(self.pool_id)
 
                 # TODO: if we're computing p99 latency on this, is it
                 # better to include all containers, or only those that
