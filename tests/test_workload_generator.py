@@ -3,7 +3,7 @@ from eudoxia.workload import WorkloadGenerator
 from eudoxia.simulator import get_param_defaults
 
 
-def _generate_interactive_pipelines(dag_linear_prob, dag_branch_in_prob):
+def _generate_interactive_pipelines(dag_linear_prob, dag_branch_in_prob, dag_branch_out_prob):
     params = get_param_defaults()
     params.update({
         "random_seed": 42,
@@ -17,6 +17,7 @@ def _generate_interactive_pipelines(dag_linear_prob, dag_branch_in_prob):
         "batch_prob": 0.0,
         "dag_linear_prob": dag_linear_prob,
         "dag_branch_in_prob": dag_branch_in_prob,
+        "dag_branch_out_prob": dag_branch_out_prob,
     })
     gen = WorkloadGenerator(**params)
     return gen.generate_pipelines()
@@ -50,6 +51,26 @@ def _is_branch_in_dag(pipeline):
         if op.children != [join_op]:
             return False
     return True
+
+def _is_branch_out_dag(pipeline):
+    ops = list(pipeline.values)
+    if not ops:
+        return False
+    if len(ops) == 1:
+        return len(ops[0].parents) == 0
+
+    join_op = ops[0]
+    if len(join_op.parents) != 0 or len(join_op.children) != len(ops) - 1:
+        return False
+    for op in ops[1:]:
+        if len(op.parents) != 1:
+            return False
+        if len(op.children) != 0:
+            return False
+    return True
+    
+
+    
 
 
 def test_workload_generator_determinism():
@@ -111,14 +132,21 @@ def test_workload_generator_determinism():
 
 
 def test_dag_linear_structure():
-    pipelines = _generate_interactive_pipelines(dag_linear_prob=1.0, dag_branch_in_prob=0.0)
+    pipelines = _generate_interactive_pipelines(dag_linear_prob=1.0, dag_branch_in_prob=0.0, dag_branch_out_prob=0.0)
     assert len(pipelines) == 10
     for p in pipelines:
         assert _is_linear_dag(p), f"Expected linear DAG, got structure with {len(list(p.values))} ops"
 
 
 def test_dag_branch_in_structure():
-    pipelines = _generate_interactive_pipelines(dag_linear_prob=0.0, dag_branch_in_prob=1.0)
+    pipelines = _generate_interactive_pipelines(dag_linear_prob=0.0, dag_branch_in_prob=1.0, dag_branch_out_prob=0.0)
     assert len(pipelines) == 10
     for p in pipelines:
         assert _is_branch_in_dag(p), f"Expected branch-in DAG, got structure with {len(list(p.values))} ops"
+
+
+def test_dag_branch_out_structure():
+    pipelines = _generate_interactive_pipelines(dag_linear_prob=0.0, dag_branch_in_prob=0.0, dag_branch_out_prob=1.0)
+    assert len(pipelines) == 10
+    for p in pipelines:
+        assert _is_branch_out_dag(p), f"Expected branch-out DAG, got structure with {len(list(p.values))} ops"
