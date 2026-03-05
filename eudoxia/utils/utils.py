@@ -14,3 +14,11 @@ class DagShape(Enum):
     LINEAR = "linear"
     BRANCH_IN = "branch_in"
     BRANCH_OUT = "branch_out"
+
+class OpType(Enum):
+    LOAD = "load"
+    TRANSFORM = "transform"
+    WRITE = "write"
+    JOIN = "join"
+    AGGREGATE = "aggregate"
+    VALIDATE = "validate"
