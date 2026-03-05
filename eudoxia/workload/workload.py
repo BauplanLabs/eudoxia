@@ -62,7 +62,8 @@ class WorkloadGenerator(Workload):
                  num_segs, cpu_io_ratio, 
                  random_seed, batch_prob, query_prob,
                  interactive_prob, ticks_per_second,
-                 dag_linear_prob, dag_branch_in_prob, **kwargs):
+                 dag_linear_prob, dag_branch_in_prob,
+                 dag_branch_out_prob, **kwargs):
 
         assert cpu_io_ratio <= 1.0 and cpu_io_ratio >= 0, "invalid CPU-IO ratio parameter"
         self.ticks_per_second = ticks_per_second
@@ -89,8 +90,8 @@ class WorkloadGenerator(Workload):
         ])
         self.priority_probs = prob_array / np.sum(prob_array, dtype=float)
         # DAG shape sampling is shared across priorities.
-        self.dag_shape_values = [DagShape.LINEAR, DagShape.BRANCH_IN]
-        dag_shape_prob_array = np.array([dag_linear_prob, dag_branch_in_prob])
+        self.dag_shape_values = [DagShape.LINEAR, DagShape.BRANCH_IN, DagShape.BRANCH_OUT]
+        dag_shape_prob_array = np.array([dag_linear_prob, dag_branch_in_prob, dag_branch_out_prob])
         assert np.all(dag_shape_prob_array >= 0), \
             "DAG shape probabilities must be non-negative"
         assert np.sum(dag_shape_prob_array, dtype=float) > 0, \
@@ -190,6 +191,12 @@ class WorkloadGenerator(Workload):
                     # operator depends on every earlier operator.
                     if op_idx == curr_num_ops - 1:
                         parents = list(created_ops)  # copy parent list for this operator
+                elif dag_shape == DagShape.BRANCH_OUT:
+                    # Branch-out: first operator is the only root, so every operator
+                    # following has a single parent, and is dependent
+                    # on the first operator
+                    if created_ops:
+                        parents = [created_ops[0]]
                 else:
                     raise ValueError(f"Unsupported DAG shape: {dag_shape}")
 

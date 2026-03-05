@@ -13,3 +13,4 @@ class Priority(Enum):
 class DagShape(Enum):
     LINEAR = "linear"
     BRANCH_IN = "branch_in"
+    BRANCH_OUT = "branch_out"
