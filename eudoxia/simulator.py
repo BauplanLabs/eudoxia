@@ -287,23 +287,6 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     if workload is None:
         workload = WorkloadGenerator(**params)
 
-    # --- TASK 1: TRACE DURATION WARNING ---
-    # WorkloadTrace objects hold the loaded pipelines in an internal list
-    # if hasattr(workload, 'pipelines') and workload.pipelines:
-    #     # Find the latest arrival time across all pipelines
-    #     max_arrival = max(p.arrival_seconds for p in workload.pipelines)
-    #     # Get the simulation duration from the TOML parameters
-    #     duration = params.get("duration", 600)
-        
-    #     if max_arrival > duration:
-    #         import logging
-    #         logger = logging.getLogger(__name__)
-    #         logger.warning(
-    #             f"Trace contains events up to {max_arrival:.1f}s, "
-    #             f"but simulation duration is set to {duration}s. "
-    #             "Events after the duration limit will be ignored."
-    #         )
-    # --------------------------------------------
 
     executor = Executor(**params)
     scheduler = Scheduler(executor, **params)
