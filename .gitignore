@@ -3,5 +3,3 @@ eudoxia.egg-info/
 build/
 *~
 __pycache__
-
-dax_scheduler.py
