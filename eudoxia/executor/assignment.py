@@ -74,7 +74,7 @@ class Assignment:
         # from creating duplicate assignments for the same operator within a single tick
         # (e.g., assigning the same op to multiple pools before the executor runs).
         for op in ops:
-            op.transition(OperatorState.ASSIGNED)
+            op.transition(OperatorState.ASSIGNED, pool_id=pool_id)
         self.ops = ops
         self.cpu = cpu
         self.ram = ram
