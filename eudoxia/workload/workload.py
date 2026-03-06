@@ -3,7 +3,7 @@ import numpy as np
 import random
 from typing import List, Iterator, NamedTuple, Optional
 from abc import ABC, abstractmethod
-from eudoxia.utils import Priority, DagShape
+from eudoxia.utils import Priority, DagShape, OpType
 from .pipeline import Pipeline, Operator, Segment
 
 logger = logging.getLogger(__name__)
@@ -200,7 +200,18 @@ class WorkloadGenerator(Workload):
                 else:
                     raise ValueError(f"Unsupported DAG shape: {dag_shape}")
 
-                op = p.new_operator(parents)
+                # Basic implementation of operator types; first operator is a load,
+                # last is a write, and the in between will randomly be a transform, 
+                # aggregate, or validate. currently this does not depend on dag shape,
+                # but may in the future
+                if not created_ops:
+                    op_type = OpType.LOAD
+                elif op_idx == curr_num_ops - 1:
+                    op_type = OpType.WRITE
+                else:
+                    op_type = self.rng.choice([OpType.TRANSFORM, OpType.AGGREGATE, OpType.VALIDATE])
+                
+                op = p.new_operator(parents, op_type)
                 created_ops.append(op)
 
                 if priority == Priority.QUERY.value:

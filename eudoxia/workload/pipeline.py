@@ -1,6 +1,6 @@
 from typing import List, Optional
 import numpy as np
-from eudoxia.utils import EudoxiaException, DISK_SCAN_GB_SEC, Priority
+from eudoxia.utils import EudoxiaException, DISK_SCAN_GB_SEC, Priority, OpType
 from eudoxia.utils.dag import Node, DAG
 from eudoxia.workload.runtime_status import PipelineRuntimeStatus, OperatorState, ASSIGNABLE_STATES
 
@@ -134,10 +134,11 @@ class Operator(Node):
     Operator is an encapsulation of many functions or a whole SQL query. Broader
     nodes in the big picture DAG. This is represented as a list of Segments
     """
-    def __init__(self, pipeline: 'Pipeline'):
+    def __init__(self, pipeline: 'Pipeline', op_type: OpType = None):
         super().__init__()
         self.values: List[Segment] = []
         self.pipeline: Pipeline = pipeline
+        self.op_type = op_type
 
     def add_segment(self, segment: Segment):
         """Add a segment to this operator"""
@@ -203,9 +204,9 @@ class Pipeline(Node):
             self._runtime_status = PipelineRuntimeStatus(self)
         return self._runtime_status
 
-    def new_operator(self, parents=None) -> Operator:
+    def new_operator(self, parents=None, op_type=None) -> Operator:
         """Create a new operator belonging to this pipeline and add it to the DAG"""
-        operator = Operator(self)
+        operator = Operator(self, op_type)
         self.values.add_node(operator, parents)
         return operator
 
