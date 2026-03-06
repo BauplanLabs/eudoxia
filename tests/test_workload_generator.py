@@ -1,6 +1,7 @@
 import pytest
 from eudoxia.workload import WorkloadGenerator
 from eudoxia.simulator import get_param_defaults
+from eudoxia.utils import OpType
 
 
 def _generate_interactive_pipelines(dag_linear_prob, dag_branch_in_prob, dag_branch_out_prob):
@@ -68,8 +69,26 @@ def _is_branch_out_dag(pipeline):
         if len(op.children) != 0:
             return False
     return True
-    
 
+def _has_valid_op_types(pipeline):
+    ops = list(pipeline.values)
+    if not ops:
+        return False
+    if len(ops) == 1:
+        if ops[0].op_type != OpType.LOAD:
+            return False
+    elif len(ops) == 2:
+        if ops[0].op_type not in OpType.LOAD or ops[1].op_type != OpType.WRITE:
+            return False
+    else:
+        if ops[0].op_type != OpType.LOAD:
+            return False
+        for op in ops[1:-1]:
+            if op.op_type not in (OpType.TRANSFORM, OpType.AGGREGATE, OpType.VALIDATE):
+                return False
+        if ops[-1].op_type != OpType.WRITE:
+            return False
+    return True
     
 
 
@@ -150,3 +169,9 @@ def test_dag_branch_out_structure():
     assert len(pipelines) == 10
     for p in pipelines:
         assert _is_branch_out_dag(p), f"Expected branch-out DAG, got structure with {len(list(p.values))} ops"
+
+def test_op_type():
+    pipelines = _generate_interactive_pipelines(dag_linear_prob=1, dag_branch_in_prob=0.0, dag_branch_out_prob=0.0)
+    assert len(pipelines) == 10
+    for p in pipelines:
+        assert _has_valid_op_types(p), f"Expected correct op_types for all operators, structure with {len(list(p.values))} had an operator with improepr type"
