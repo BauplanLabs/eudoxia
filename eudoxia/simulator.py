@@ -10,6 +10,7 @@ from eudoxia.executor import Executor
 from eudoxia.scheduler import Scheduler
 from eudoxia.workload import Workload, WorkloadGenerator, Pipeline
 from eudoxia.executor.assignment import Assignment
+from eudoxia.estimator import BaseEstimator, build_estimator
 
 __all__ = ["run_simulator", "parse_args_with_defaults", "get_param_defaults", "SimulatorStats", "PipelineStats"]
 
@@ -226,6 +227,13 @@ def get_param_defaults() -> Dict:
         "allow_memory_overcommit": False,
         # random seed for workload generation
         "random_seed": 42,
+
+        ### Estimator Params ###
+        # estimator algorithm: None (default, no estimator) or "oracle"
+        "estimator_algo": None,
+        # lognormal noise sigma (0.0 = no noise); only used when estimator_algo is set
+        "estimator_noise_sigma": 0.0,
+        # estimator_seed defaults to random_seed at build time (see run_simulator)
     }
 
 def parse_args_with_defaults(params: Dict) -> Dict:
@@ -249,7 +257,8 @@ def parse_args_with_defaults(params: Dict) -> Dict:
 
     return result
 
-def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> SimulatorStats:
+def run_simulator(param_input: Union[str, Dict], workload: Workload = None,
+                  estimator: BaseEstimator = None) -> SimulatorStats:
     """
     The main method to run the simulator. There are three core entities,
     WorkloadGenerator, Scheduler, and Executor. Each offers a `run_one_tick`
@@ -260,6 +269,7 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     Args:
         param_input: Either a path to a TOML file with params, or a dict of params
         workload: Optional custom workload source. If None, uses WorkloadGenerator with params
+        estimator: Optional custom estimator. If None, built from params (estimator_algo etc.)
     
     Returns:
         SimulatorStats: Statistics from the simulation run including pipelines
@@ -294,6 +304,13 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
 
     executor = Executor(**params)
     scheduler = Scheduler(executor, **params)
+
+    # Estimator: user-supplied object takes priority; otherwise build from params.
+    # If estimator_algo is None (default), build_estimator returns None → no estimation.
+    if estimator is None:
+        if "estimator_seed" not in params:
+            params["estimator_seed"] = params["random_seed"]
+        estimator = build_estimator(params)
 
     # Set up custom logging with elapsed time
     ticks_per_second = params["ticks_per_second"]
@@ -341,6 +358,15 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
             p.runtime_status().record_arrival(tick_number)
             outstanding_pipelines[p.pipeline_id] = p
             pipeline_arrivals_by_priority[p.priority] += 1
+            # Inject estimates before passing to scheduler. Estimator writes hints
+            # into op.estimate; scheduler may read them via op.estimate.get(key).
+            # If estimator=None, op.estimate stays {} and scheduler uses its default logic.
+            if estimator is not None:
+                # OracleEstimator does not use it, but future estimators may need
+                # global state (e.g. pool utilization, params) that is not on the op.
+                est_context = {"params": params}
+                for op in p.values:
+                    op.estimate = estimator.estimate(op, tick_number, est_context)
 
         # simulate scheduler/executor
         suspensions, assignments = scheduler.run_one_tick(executor_results, new_pipelines)

@@ -138,6 +138,9 @@ class Operator(Node):
         super().__init__()
         self.values: List[Segment] = []
         self.pipeline: Pipeline = pipeline
+        # Populated by estimator before scheduler sees this operator.
+        # Empty dict means estimator has not yet run.
+        self.estimate: dict = {}
 
     def add_segment(self, segment: Segment):
         """Add a segment to this operator"""
@@ -161,6 +164,10 @@ class Operator(Node):
         Note: Segment details (CPU time, memory, I/O) are not serialized because
         this information is hidden from the scheduler - it must make decisions
         without knowing the true resource requirements.
+
+        The 'estimate' field is populated by an estimator (e.g. OracleEstimator)
+        before the scheduler sees this operator. It contains scheduling-visible
+        metrics derived from (but not identical to) the true segment values.
         """
         runtime = self.pipeline.runtime_status()
         state = runtime.operator_states[self]
@@ -173,6 +180,7 @@ class Operator(Node):
             "state": state.value,
             "is_assignable_state": state in ASSIGNABLE_STATES,
             "parents_complete": parents_complete,
+            "estimate": self.estimate,
         }
 
 
