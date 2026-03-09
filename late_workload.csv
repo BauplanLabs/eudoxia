@@ -1,2 +1,0 @@
-arrival_seconds,priority,op_count,expected_runtime,pipeline_id,operator_id,cpu,ram,baseline_cpu_seconds,baseline_ram_seconds,baseline_io_seconds
-10.0,QUERY,1,2.0,p1,op1,4,16,5.0,20.0,2.0
