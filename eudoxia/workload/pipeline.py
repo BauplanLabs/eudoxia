@@ -189,6 +189,8 @@ class Pipeline(Node):
         self.priority: Priority = priority
         self.values: DAG[Operator] = DAG()
 
+        self.first_assignment_tick = None # Queueing Delay
+        
         # MUTABLE: Execution state tracking (lazy-initialized via runtime_status() method)
         self._runtime_status: Optional['PipelineRuntimeStatus'] = None
 
