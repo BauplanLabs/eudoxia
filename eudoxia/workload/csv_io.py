@@ -206,18 +206,20 @@ class CSVWorkloadReader(WorkloadReader):
 class CSVWorkloadWriter:
     """Writes workload data to CSV format"""
     
-    def __init__(self, file_handle: TextIO):
+    def __init__(self, file_handle: TextIO, label_columns=None):
         """Initialize CSV writer with an open file handle"""
+        label_columns = label_columns or []
+        self.label_columns = label_columns
         self.file_handle = file_handle
         self.writer = csv.DictWriter(file_handle, fieldnames=[
             'pipeline_id', 'arrival_seconds', 'priority', 'operator_id', 'parents',
-            'baseline_cpu_seconds', 'cpu_scaling', 'memory_gb', 'storage_read_gb', 'labels'
-        ])
+            'baseline_cpu_seconds', 'cpu_scaling', 'memory_gb', 'storage_read_gb',
+        ] + label_columns)
         self.writer.writeheader()
 
     def write_row(self, row: CSVOperatorRow):
         """Write a single CSVOperatorRow to the file"""
-        self.writer.writerow({
+        row_dict = {
             'pipeline_id': row.pipeline_id,
             'arrival_seconds': row.arrival_seconds if row.arrival_seconds is not None else '',
             'priority': row.priority,
@@ -226,9 +228,11 @@ class CSVWorkloadWriter:
             'baseline_cpu_seconds': row.baseline_cpu_seconds,
             'cpu_scaling': row.cpu_scaling,
             'memory_gb': row.memory_gb if row.memory_gb is not None else '',
-            'storage_read_gb': row.storage_read_gb,
-            'labels': row.labels
-        })
+            'storage_read_gb': row.storage_read_gb   
+        }
+        for col in self.label_columns:
+            row_dict[col] = row.labels.get(col, '')
+        self.writer.writerow(row_dict)
 
 
 class WorkloadTraceGenerator:

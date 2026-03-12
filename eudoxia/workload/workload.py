@@ -188,7 +188,7 @@ class WorkloadGenerator(Workload):
                 if dag_shape == DagShape.LINEAR:
                     if created_ops:
                         parents = [created_ops[-1]]
-                        if op_idx == curr_num_ops - 1
+                        if op_idx == curr_num_ops - 1:
                             labels["op_type"] = OpType.WRITE.value
                             labels["file_size_mb"] = self.rng.integers(50, 501)
                         else:
