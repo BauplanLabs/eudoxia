@@ -211,7 +211,7 @@ class CSVWorkloadWriter:
         self.file_handle = file_handle
         self.writer = csv.DictWriter(file_handle, fieldnames=[
             'pipeline_id', 'arrival_seconds', 'priority', 'operator_id', 'parents',
-            'baseline_cpu_seconds', 'cpu_scaling', 'memory_gb', 'storage_read_gb'
+            'baseline_cpu_seconds', 'cpu_scaling', 'memory_gb', 'storage_read_gb', 'labels'
         ])
         self.writer.writeheader()
 
@@ -226,7 +226,8 @@ class CSVWorkloadWriter:
             'baseline_cpu_seconds': row.baseline_cpu_seconds,
             'cpu_scaling': row.cpu_scaling,
             'memory_gb': row.memory_gb if row.memory_gb is not None else '',
-            'storage_read_gb': row.storage_read_gb
+            'storage_read_gb': row.storage_read_gb,
+            'labels': row.labels
         })
 
 
@@ -274,6 +275,7 @@ class WorkloadTraceGenerator:
             # Priority and arrival_seconds only in first row of each pipeline
             priority = pipeline.priority.name if i == 0 else ''
             arrival = arrival_seconds if i == 0 else None
+            labels = operator.labels
             
             yield CSVOperatorRow(
                 pipeline_id=pipeline_id,
@@ -284,7 +286,8 @@ class WorkloadTraceGenerator:
                 baseline_cpu_seconds=segment.baseline_cpu_seconds,
                 cpu_scaling=cpu_scaling,
                 memory_gb=segment.memory_gb,
-                storage_read_gb=segment.storage_read_gb
+                storage_read_gb=segment.storage_read_gb,
+                labels=labels
             )
     
     def generate_rows(self) -> Iterator[CSVOperatorRow]:
