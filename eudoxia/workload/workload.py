@@ -3,7 +3,7 @@ import numpy as np
 import random
 from typing import List, Iterator, NamedTuple, Optional
 from abc import ABC, abstractmethod
-from eudoxia.utils import Priority, DagShape
+from eudoxia.utils import Priority, DagShape, OpType
 from .pipeline import Pipeline, Operator, Segment
 
 logger = logging.getLogger(__name__)
@@ -181,27 +181,44 @@ class WorkloadGenerator(Workload):
                 if curr_num_ops < 1:
                     curr_num_ops = 1
 
+            labels = {}
+
             created_ops = []
             for op_idx in range(curr_num_ops):
                 parents = None
                 if dag_shape == DagShape.LINEAR:
                     if created_ops:
                         parents = [created_ops[-1]]
+                        if op_idx = curr_num_ops - 1
+                            labels["op_type"] = OpType.WRITE
+                            labels["file_size_mb"] = self.rng.randint(50, 500)
+                        else:
+                            labels["op_type"] = OpType.TRANSFORM
+                    else:
+                        labels["op_type"] = OpType.READ
+                        labels["file_size_mb"] = self.rng.randint(50, 500)
                 elif dag_shape == DagShape.BRANCH_IN:
                     # Branch-in: all early operators are roots, and the final
                     # operator depends on every earlier operator.
                     if op_idx == curr_num_ops - 1:
                         parents = list(created_ops)  # copy parent list for this operator
+                        labels["op_type"] = OpType.TRANSFORM
+                    else:
+                        labels["op_type"] = OpType.READ
+                        labels["file_size_mb"] = self.rng.randint(50, 500)
                 elif dag_shape == DagShape.BRANCH_OUT:
                     # Branch-out: first operator is the only root, so every operator
                     # following has a single parent, and is dependent
                     # on the first operator
                     if created_ops:
                         parents = [created_ops[0]]
+                        labels["op_type"] = OpType.WRITE
+                        labels["file_size_mb"] = self.rng.randint(50, 500)
+                    else:
+                        labels["op_type"] = OpType.READ
+                        labels["file_size_mb"] = self.rng.randint(50, 500)
                 else:
                     raise ValueError(f"Unsupported DAG shape: {dag_shape}")
-
-                
 
                 op = p.new_operator(parents, labels)
                 created_ops.append(op)
