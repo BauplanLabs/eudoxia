@@ -108,6 +108,7 @@ class WorkloadGenerator(Workload):
         self.cpu_io_ratio = cpu_io_ratio
         # counter for pipeline IDs
         self.pipeline_counter = 0
+        self.meta_data = meta_data
 
     def generate_query_segment(self) -> Segment:
         return Segment(baseline_cpu_seconds=15, cpu_scaling="linear3", storage_read_gb=35)
@@ -200,7 +201,9 @@ class WorkloadGenerator(Workload):
                 else:
                     raise ValueError(f"Unsupported DAG shape: {dag_shape}")
 
-                op = p.new_operator(parents)
+                
+
+                op = p.new_operator(parents, labels)
                 created_ops.append(op)
 
                 if priority == Priority.QUERY.value:
