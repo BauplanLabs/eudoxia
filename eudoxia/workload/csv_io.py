@@ -18,6 +18,7 @@ class CSVOperatorRow(NamedTuple):
     cpu_scaling: str
     memory_gb: Optional[float]
     storage_read_gb: float
+    labels: dict = {}
 
 
 class CSVWorkloadReader(WorkloadReader):
@@ -156,7 +157,7 @@ class CSVWorkloadReader(WorkloadReader):
                 parent_operators = [operators[pid] for pid in parent_ids]
 
             # Create the operator and add to DAG
-            operator = pipeline.new_operator(parent_operators)
+            operator = pipeline.new_operator(parent_operators, row.labels)
 
             # Create the single segment for this operator
             segment = Segment(
@@ -172,6 +173,18 @@ class CSVWorkloadReader(WorkloadReader):
 
     def _parse_row(self, row_dict: dict) -> CSVOperatorRow:
         """Convert a dictionary row from DictReader to CSVOperatorRow namedtuple"""
+
+        REQUIRED_COLUMNS = {
+            'pipeline_id', 'arrival_seconds', 'priority', 'operator_id',
+            'parents', 'baseline_cpu_seconds', 'cpu_scaling', 'memory_gb',
+            'storage_read_gb'
+        }
+
+        labels = {}
+        for key, value in row_dict.items():
+            if key not in REQUIRED_COLUMNS and value.strip():
+                labels[key] = value.strip()
+
         # Handle arrival_seconds - only first operator should have it, others should be empty
         arrival_str = row_dict.get('arrival_seconds', '').strip()
         arrival_seconds = float(arrival_str) if arrival_str else None
@@ -185,7 +198,8 @@ class CSVWorkloadReader(WorkloadReader):
             baseline_cpu_seconds=float(row_dict['baseline_cpu_seconds']),
             cpu_scaling=row_dict['cpu_scaling'],
             memory_gb=float(row_dict['memory_gb']) if row_dict.get('memory_gb') else None,
-            storage_read_gb=float(row_dict['storage_read_gb'])
+            storage_read_gb=float(row_dict['storage_read_gb']),
+            labels=labels
         )
 
 
