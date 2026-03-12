@@ -68,6 +68,57 @@ def _is_branch_out_dag(pipeline):
         if len(op.children) != 0:
             return False
     return True
+
+def _has_valid_operator_type(pipeline):
+    ops = list(pipeline.values)
+
+
+    if _is_linear_dag(pipeline):
+
+        for i in range(len(ops)):
+
+            if "op_type" not in ops[i].labels:
+                    return False, "linear"
+
+            if i == 0:
+                if ops[i].labels["op_type"] != "read":
+                    return False, "linear"
+            elif i == len(ops) - 1:
+                if ops[i].labels["op_type"] != "write":
+                    return False, "linear"
+            else:
+                if ops[i].labels["op_type"] != "transform":
+                    return False, "linear"
+    elif _is_branch_in_dag(pipeline):
+
+        for i in range(len(ops)):
+
+            if "op_type" not in ops[i].labels:
+                    return False, "branch-in"
+            
+            if i != len(ops) - 1:
+                if ops[i].labels["op_type"] != "read":
+                    return False, "branch-in"
+            else:
+                if ops[i].labels["op_type"] != "transform":
+                    return False, "branch-in"
+    elif _is_branch_out_dag(pipeline):
+
+        for i in range(len(ops)):
+
+            if "op_type" not in ops[i].labels:
+                    return False, "branch-out"
+            
+            if i == 0:
+                if ops[i].labels["op_type"] != "read":
+                    return False, "branch-out"
+            else:
+                if ops[i].labels["op_type"] != "write":
+                    return False, "branch-out"
+    else:
+        return False, "invalid shape"
+
+    return True, None
     
 
     
@@ -150,3 +201,10 @@ def test_dag_branch_out_structure():
     assert len(pipelines) == 10
     for p in pipelines:
         assert _is_branch_out_dag(p), f"Expected branch-out DAG, got structure with {len(list(p.values))} ops"
+
+def test_valid_operator_types():
+    pipelines = _generate_interactive_pipelines(dag_linear_prob=4.0, dag_branch_in_prob=3.0, dag_branch_out_prob=3.0)
+    assert len(pipelines) == 10
+    for p in pipelines:
+        result, error = _has_valid_operator_type(p)
+        assert result, f"Expected valid operator types, failed for {error} DAG shape"
