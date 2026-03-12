@@ -18,6 +18,7 @@ class CSVOperatorRow(NamedTuple):
     cpu_scaling: str
     memory_gb: Optional[float]
     storage_read_gb: float
+    labels: dict = {}
 
 
 class CSVWorkloadReader(WorkloadReader):
@@ -156,7 +157,7 @@ class CSVWorkloadReader(WorkloadReader):
                 parent_operators = [operators[pid] for pid in parent_ids]
 
             # Create the operator and add to DAG
-            operator = pipeline.new_operator(parent_operators)
+            operator = pipeline.new_operator(parent_operators, row.labels)
 
             # Create the single segment for this operator
             segment = Segment(
@@ -172,6 +173,21 @@ class CSVWorkloadReader(WorkloadReader):
 
     def _parse_row(self, row_dict: dict) -> CSVOperatorRow:
         """Convert a dictionary row from DictReader to CSVOperatorRow namedtuple"""
+
+        # setting the required columns to differentiate between labels and permanent pipeline stats
+        REQUIRED_COLUMNS = {
+            'pipeline_id', 'arrival_seconds', 'priority', 'operator_id',
+            'parents', 'baseline_cpu_seconds', 'cpu_scaling', 'memory_gb',
+            'storage_read_gb'
+        }
+
+        # looking at row_dict to find values that are not in REQUIRED_COLUMNS
+        # and adding them to labels after stripping them to avoid adding empty values
+        labels = {}
+        for key, value in row_dict.items():
+            if key not in REQUIRED_COLUMNS and value.strip():
+                labels[key] = value.strip()
+
         # Handle arrival_seconds - only first operator should have it, others should be empty
         arrival_str = row_dict.get('arrival_seconds', '').strip()
         arrival_seconds = float(arrival_str) if arrival_str else None
@@ -185,25 +201,32 @@ class CSVWorkloadReader(WorkloadReader):
             baseline_cpu_seconds=float(row_dict['baseline_cpu_seconds']),
             cpu_scaling=row_dict['cpu_scaling'],
             memory_gb=float(row_dict['memory_gb']) if row_dict.get('memory_gb') else None,
-            storage_read_gb=float(row_dict['storage_read_gb'])
+            storage_read_gb=float(row_dict['storage_read_gb']),
+            labels=labels
         )
 
 
 class CSVWorkloadWriter:
     """Writes workload data to CSV format"""
     
-    def __init__(self, file_handle: TextIO):
+    def __init__(self, file_handle: TextIO, label_columns=None):
         """Initialize CSV writer with an open file handle"""
+        ## getting label_columns from 
+        label_columns = label_columns or []
+        self.label_columns = label_columns
+
         self.file_handle = file_handle
         self.writer = csv.DictWriter(file_handle, fieldnames=[
             'pipeline_id', 'arrival_seconds', 'priority', 'operator_id', 'parents',
-            'baseline_cpu_seconds', 'cpu_scaling', 'memory_gb', 'storage_read_gb'
-        ])
+            'baseline_cpu_seconds', 'cpu_scaling', 'memory_gb', 'storage_read_gb',
+        ] + label_columns)
         self.writer.writeheader()
 
     def write_row(self, row: CSVOperatorRow):
         """Write a single CSVOperatorRow to the file"""
-        self.writer.writerow({
+
+        # creating row dict of permanent values
+        row_dict = {
             'pipeline_id': row.pipeline_id,
             'arrival_seconds': row.arrival_seconds if row.arrival_seconds is not None else '',
             'priority': row.priority,
@@ -212,8 +235,12 @@ class CSVWorkloadWriter:
             'baseline_cpu_seconds': row.baseline_cpu_seconds,
             'cpu_scaling': row.cpu_scaling,
             'memory_gb': row.memory_gb if row.memory_gb is not None else '',
-            'storage_read_gb': row.storage_read_gb
-        })
+            'storage_read_gb': row.storage_read_gb   
+        }
+        # adding all optional feature values from labels dict to row_dict
+        for col in self.label_columns:
+            row_dict[col] = row.labels.get(col, '')
+        self.writer.writerow(row_dict)
 
 
 class WorkloadTraceGenerator:
@@ -260,6 +287,7 @@ class WorkloadTraceGenerator:
             # Priority and arrival_seconds only in first row of each pipeline
             priority = pipeline.priority.name if i == 0 else ''
             arrival = arrival_seconds if i == 0 else None
+            labels = operator.labels
             
             yield CSVOperatorRow(
                 pipeline_id=pipeline_id,
@@ -270,7 +298,8 @@ class WorkloadTraceGenerator:
                 baseline_cpu_seconds=segment.baseline_cpu_seconds,
                 cpu_scaling=cpu_scaling,
                 memory_gb=segment.memory_gb,
-                storage_read_gb=segment.storage_read_gb
+                storage_read_gb=segment.storage_read_gb,
+                labels=labels
             )
     
     def generate_rows(self) -> Iterator[CSVOperatorRow]:

@@ -341,10 +341,16 @@ def _sensitivity_task(task):
             )
 
             with open(workload_file, 'w') as f:
-                writer = CSVWorkloadWriter(f)
-                for row in trace_generator.generate_rows():
-                    writer.write_row(row)
 
+                # collecting all the rows first to find label keys
+                rows = list(trace_generator.generate_rows())
+                label_columns = sorted(set(
+                    key for row in rows for key in row.labels
+                ))
+                writer = CSVWorkloadWriter(f, label_columns=label_columns)
+                for row in rows:
+                    writer.write_row(row)
+                    
             print(f"Workload w{task.workload_index}.csv generated\n")
 
             # Run sensitivity analysis
