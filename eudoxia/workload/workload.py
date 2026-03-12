@@ -189,36 +189,44 @@ class WorkloadGenerator(Workload):
                     if created_ops:
                         parents = [created_ops[-1]]
                         if op_idx == curr_num_ops - 1:
+                            # Last operator in a linear DAG shape should be a WRITE
                             labels["op_type"] = OpType.WRITE.value
-                            labels["file_size_mb"] = self.rng.integers(50, 501)
+                            labels["file_size_mb"] = int(self.rng.integers(50, 501))
                         else:
+                            # Middle operators in a linear DAG shape should be TRANSFORMs (doesn't use file size)
                             labels["op_type"] = OpType.TRANSFORM.value
                     else:
+                        # First operator in a linear DAG shape should be a READ
                         labels["op_type"] = OpType.READ.value
-                        labels["file_size_mb"] = self.rng.integers(50, 501)
+                        labels["file_size_mb"] = int(self.rng.integers(50, 501))
                 elif dag_shape == DagShape.BRANCH_IN:
                     # Branch-in: all early operators are roots, and the final
                     # operator depends on every earlier operator.
                     if op_idx == curr_num_ops - 1:
                         parents = list(created_ops)  # copy parent list for this operator
+                        # Parent operator in branch in DAG shape should be a TRANSFORM for the joining (doesn't use file size)
                         labels["op_type"] = OpType.TRANSFORM.value
                     else:
+                        # Root operators should be READs in branch in DAG shape
                         labels["op_type"] = OpType.READ.value
-                        labels["file_size_mb"] = self.rng.integers(50, 501)
+                        labels["file_size_mb"] = int(self.rng.integers(50, 501))
                 elif dag_shape == DagShape.BRANCH_OUT:
                     # Branch-out: first operator is the only root, so every operator
                     # following has a single parent, and is dependent
                     # on the first operator
                     if created_ops:
                         parents = [created_ops[0]]
+                        # In branch out DAG shape every operator but root should be WRITE
                         labels["op_type"] = OpType.WRITE.value
-                        labels["file_size_mb"] = self.rng.integers(50, 501)
+                        labels["file_size_mb"] = int(self.rng.integers(50, 501))
                     else:
+                        # First operator in branch out DAG shape should be a READ
                         labels["op_type"] = OpType.READ.value
-                        labels["file_size_mb"] = self.rng.integers(50, 501)
+                        labels["file_size_mb"] = int(self.rng.integers(50, 501))
                 else:
                     raise ValueError(f"Unsupported DAG shape: {dag_shape}")
 
+                # Creating operator with labels dict for features
                 op = p.new_operator(parents, labels)
                 created_ops.append(op)
 

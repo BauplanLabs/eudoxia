@@ -174,12 +174,15 @@ class CSVWorkloadReader(WorkloadReader):
     def _parse_row(self, row_dict: dict) -> CSVOperatorRow:
         """Convert a dictionary row from DictReader to CSVOperatorRow namedtuple"""
 
+        # setting the required columns to differentiate between labels and permanent pipeline stats
         REQUIRED_COLUMNS = {
             'pipeline_id', 'arrival_seconds', 'priority', 'operator_id',
             'parents', 'baseline_cpu_seconds', 'cpu_scaling', 'memory_gb',
             'storage_read_gb'
         }
 
+        # looking at row_dict to find values that are not in REQUIRED_COLUMNS
+        # and adding them to labels after stripping them to avoid adding empty values
         labels = {}
         for key, value in row_dict.items():
             if key not in REQUIRED_COLUMNS and value.strip():
@@ -208,8 +211,10 @@ class CSVWorkloadWriter:
     
     def __init__(self, file_handle: TextIO, label_columns=None):
         """Initialize CSV writer with an open file handle"""
+        ## getting label_columns from 
         label_columns = label_columns or []
         self.label_columns = label_columns
+
         self.file_handle = file_handle
         self.writer = csv.DictWriter(file_handle, fieldnames=[
             'pipeline_id', 'arrival_seconds', 'priority', 'operator_id', 'parents',
@@ -219,6 +224,8 @@ class CSVWorkloadWriter:
 
     def write_row(self, row: CSVOperatorRow):
         """Write a single CSVOperatorRow to the file"""
+
+        # creating row dict of permanent values
         row_dict = {
             'pipeline_id': row.pipeline_id,
             'arrival_seconds': row.arrival_seconds if row.arrival_seconds is not None else '',
@@ -230,6 +237,7 @@ class CSVWorkloadWriter:
             'memory_gb': row.memory_gb if row.memory_gb is not None else '',
             'storage_read_gb': row.storage_read_gb   
         }
+        # adding all optional feature values from labels dict to row_dict
         for col in self.label_columns:
             row_dict[col] = row.labels.get(col, '')
         self.writer.writerow(row_dict)
