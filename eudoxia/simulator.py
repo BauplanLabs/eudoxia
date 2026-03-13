@@ -10,6 +10,7 @@ from eudoxia.executor import Executor
 from eudoxia.scheduler import Scheduler
 from eudoxia.workload import Workload, WorkloadGenerator, Pipeline
 from eudoxia.executor.assignment import Assignment
+from eudoxia.estimator import build_estimator
 
 __all__ = ["run_simulator", "parse_args_with_defaults", "get_param_defaults", "SimulatorStats", "PipelineStats"]
 
@@ -226,6 +227,13 @@ def get_param_defaults() -> Dict:
         "allow_memory_overcommit": False,
         # random seed for workload generation
         "random_seed": 42,
+
+        ### Estimator Params ###
+        # estimator algorithm: None (default, no estimator) or "noisyoracle"
+        "estimator_algo": None,
+        # lognormal noise sigma (0.0 = no noise); only used when estimator_algo is set
+        "estimator_noise_sigma": 0.0,
+        # estimator_seed defaults to random_seed in estimator construction
     }
 
 def parse_args_with_defaults(params: Dict) -> Dict:
@@ -295,6 +303,9 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     executor = Executor(**params)
     scheduler = Scheduler(executor, **params)
 
+    # If estimator_algo is None (default), build_estimator returns None → no estimation.
+    estimator = build_estimator(params)
+
     # Set up custom logging with elapsed time
     ticks_per_second = params["ticks_per_second"]
 
@@ -341,6 +352,11 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
             p.runtime_status().record_arrival(tick_number)
             outstanding_pipelines[p.pipeline_id] = p
             pipeline_arrivals_by_priority[p.priority] += 1
+            # Inject estimates before passing to scheduler.
+            # If estimator_algo is None, op.estimate stays empty and scheduler uses defaults.
+            if estimator is not None:
+                for op in p.values:
+                    op.estimate = estimator.estimate(op)
 
         # simulate scheduler/executor
         suspensions, assignments = scheduler.run_one_tick(executor_results, new_pipelines)
