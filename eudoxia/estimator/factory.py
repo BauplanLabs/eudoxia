@@ -1,31 +1,25 @@
-from .base import BaseEstimator
-from .oracle import OracleEstimator
-from .noisy import NoisyEstimator
+from .decorators import ESTIMATOR_ALGOS
+
+# Import estimator modules so decorators run at import time.
+from . import oracle  # noqa: F401
 
 
-def build_estimator(params: dict) -> BaseEstimator | None:
+def build_estimator(params: dict):
     """
-    Build a BaseEstimator from simulator params.
+    Build an estimator from simulator params.
 
     Returns None if estimator_algo is None (no estimation).
 
     Relevant params:
-      - estimator_algo (str|None):     None (default, no estimator) or "oracle"
-      - estimator_noise_sigma (float): 0.0 (default, no noise)
-      - estimator_seed (int):          defaults to random_seed
+      - estimator_algo (str|None): None or "noisyoracle".
+      - estimator_noise_sigma (float): lognormal noise sigma (default 0.0 = no noise).
+      - estimator_seed (int): RNG seed. Fallback chain: estimator_seed → random_seed → 42.
     """
     algo = params.get("estimator_algo", None)
     if algo is None:
         return None
 
-    sigma = params.get("estimator_noise_sigma", 0.0)
-    seed = params.get("estimator_seed", params.get("random_seed", 42))
-
-    if algo == "oracle":
-        base = OracleEstimator()
-    else:
+    if algo not in ESTIMATOR_ALGOS:
         raise ValueError(f"Unknown estimator_algo: {repr(algo)}")
 
-    if sigma > 0:
-        return NoisyEstimator(base, sigma=sigma, seed=seed)
-    return base
+    return ESTIMATOR_ALGOS[algo](params)

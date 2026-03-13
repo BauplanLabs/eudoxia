@@ -1,4 +1,4 @@
-from .base import BaseEstimator
-from .oracle import OracleEstimator
-from .noisy import NoisyEstimator
+from .decorators import ESTIMATOR_ALGOS, register_estimator
+from .estimate import Estimate
+from .oracle import NoisyOracleEstimator
 from .factory import build_estimator

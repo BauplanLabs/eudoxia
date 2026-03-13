@@ -1,5 +1,6 @@
 from typing import List, Optional
 import numpy as np
+from eudoxia.estimator.estimate import Estimate
 from eudoxia.utils import EudoxiaException, DISK_SCAN_GB_SEC, Priority
 from eudoxia.utils.dag import Node, DAG
 from eudoxia.workload.runtime_status import PipelineRuntimeStatus, OperatorState, ASSIGNABLE_STATES
@@ -139,8 +140,7 @@ class Operator(Node):
         self.values: List[Segment] = []
         self.pipeline: Pipeline = pipeline
         # Populated by estimator before scheduler sees this operator.
-        # Empty dict means estimator has not yet run.
-        self.estimate: dict = {}
+        self.estimate: Estimate = Estimate()
 
     def add_segment(self, segment: Segment):
         """Add a segment to this operator"""
@@ -165,9 +165,8 @@ class Operator(Node):
         this information is hidden from the scheduler - it must make decisions
         without knowing the true resource requirements.
 
-        The 'estimate' field is populated by an estimator (e.g. OracleEstimator)
-        before the scheduler sees this operator. It contains scheduling-visible
-        metrics derived from (but not identical to) the true segment values.
+        The 'estimate' field is populated by an estimator (e.g. NoisyOracleEstimator)
+        before the scheduler sees this operator.
         """
         runtime = self.pipeline.runtime_status()
         state = runtime.operator_states[self]
@@ -180,7 +179,7 @@ class Operator(Node):
             "state": state.value,
             "is_assignable_state": state in ASSIGNABLE_STATES,
             "parents_complete": parents_complete,
-            "estimate": self.estimate,
+            "estimate": self.estimate.to_dict(),
         }
 
 
@@ -228,4 +227,3 @@ class Pipeline(Node):
             "has_failures": runtime.state_counts[OperatorState.FAILED] > 0,
             "operators": [op.to_dict() for op in self.values],
         }
-
