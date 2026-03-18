@@ -4,16 +4,16 @@ from .decorators import register_estimator
 from .estimate import Estimate
 
 
-class NoisyOracleEstimator:
+class NoisyEstimator:
     """
-    Oracle estimator with optional multiplicative noise.
+    Estimator with optional multiplicative noise.
 
-    sigma=0 is exact oracle behavior.
+    sigma=0 returns the exact peak memory (no noise).
     sigma>0 applies lognormal noise to model relative error while keeping
     estimates non-negative.
     """
 
-    def __init__(self, sigma: float = 0.0, seed: int = 42):
+    def __init__(self, sigma: float, seed: int):
         if sigma < 0:
             raise ValueError(f"sigma must be >= 0, got {sigma}")
         self.sigma = sigma
@@ -32,7 +32,7 @@ class NoisyOracleEstimator:
 
 
 @register_estimator(key="noisyoracle")
-def build_noisy_oracle_estimator(params: dict) -> NoisyOracleEstimator:
-    sigma = params.get("estimator_noise_sigma", 0.0)
-    seed = params.get("estimator_seed", params.get("random_seed", 42))
-    return NoisyOracleEstimator(sigma=sigma, seed=seed)
+def build_noisy_estimator(params: dict) -> NoisyEstimator:
+    sigma = params["noisy_estimator_sigma"]
+    seed = params.get("estimator_seed", params["random_seed"])
+    return NoisyEstimator(sigma=sigma, seed=seed)
