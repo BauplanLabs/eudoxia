@@ -1,7 +1,7 @@
 import numpy as np
 
 from .decorators import register_estimator
-from .estimate import Estimate
+from .estimator import Estimate
 
 
 class NoisyEstimator:
@@ -32,7 +32,7 @@ class NoisyEstimator:
 
 
 @register_estimator(key="noisyoracle")
-def build_noisy_estimator(params: dict) -> NoisyEstimator:
+def noisy_estimator(params: dict) -> NoisyEstimator:
     sigma = params["noisy_estimator_sigma"]
     seed = params.get("estimator_seed", params["random_seed"])
     return NoisyEstimator(sigma=sigma, seed=seed)

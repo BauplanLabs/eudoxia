@@ -1,6 +1,6 @@
 from typing import List, Optional
 import numpy as np
-from eudoxia.estimator.estimate import Estimate
+from eudoxia.estimator.estimator import Estimate
 from eudoxia.utils import EudoxiaException, DISK_SCAN_GB_SEC, Priority
 from eudoxia.utils.dag import Node, DAG
 from eudoxia.workload.runtime_status import PipelineRuntimeStatus, OperatorState, ASSIGNABLE_STATES

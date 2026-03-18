@@ -1,6 +1,8 @@
 import pytest
 from eudoxia.workload.pipeline import Pipeline, Segment
-from eudoxia.estimator import ESTIMATOR_ALGOS, Estimate, NoisyEstimator, Estimator
+from eudoxia.estimator import Estimate, Estimator
+from eudoxia.estimator.decorators import ESTIMATOR_ALGOS
+from eudoxia.estimator.noisy import NoisyEstimator
 from eudoxia.utils import Priority
 
 
@@ -81,16 +83,23 @@ class TestEstimator:
 
     def test_none_algo_is_noop(self):
         """estimator_algo=None → Estimator exists but estimate() is a no-op."""
-        est = Estimator(estimator_algo=None)
-        assert est._algo is None
+        estimator = Estimator(estimator_algo=None)
+        op = _make_op([Segment(baseline_cpu_seconds=10, cpu_scaling="const",
+                               memory_gb=32.0, storage_read_gb=50)])
+        estimator.estimate(op)
+        assert op.estimate == Estimate()
 
-    def test_noisyoracle_algo_name(self):
-        est = Estimator(
+    def test_noisyoracle_produces_estimate(self):
+        """estimator_algo="noisyoracle" → estimate() populates op.estimate."""
+        estimator = Estimator(
             estimator_algo="noisyoracle",
-            noisy_estimator_sigma=0.5,
+            noisy_estimator_sigma=0.0,
             random_seed=42,
         )
-        assert isinstance(est._algo, NoisyEstimator)
+        op = _make_op([Segment(baseline_cpu_seconds=10, cpu_scaling="const",
+                               memory_gb=32.0, storage_read_gb=50)])
+        estimator.estimate(op)
+        assert op.estimate.mem_peak_gb_est == 32.0
 
     def test_noisyoracle_is_registered(self):
         assert "noisyoracle" in ESTIMATOR_ALGOS
@@ -115,9 +124,11 @@ class TestOperatorEstimateField:
 
     def test_to_dict_after_estimator(self):
         """to_dict() reflects estimator-injected values."""
+        estimator = Estimator(estimator_algo="noisyoracle",
+                              noisy_estimator_sigma=0.0, random_seed=42)
         pipeline = Pipeline("p1", Priority.BATCH_PIPELINE)
         op = pipeline.new_operator()
         op.add_segment(Segment(baseline_cpu_seconds=1, cpu_scaling="const",
                                memory_gb=42.0, storage_read_gb=10))
-        op.estimate = NoisyEstimator(sigma=0.0, seed=42).estimate(op)
+        estimator.estimate(op)
         assert op.to_dict()["estimate"]["mem_peak_gb_est"] == 42.0
