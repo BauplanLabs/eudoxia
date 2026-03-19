@@ -103,13 +103,8 @@ def gentrace_command(params_file, output_file, force=False):
 
     # Write Trace to CSV
     with open(output_file, 'w') as f:
-
-        # collecting all the rows first to find label keys
         rows = list(trace_generator.generate_rows())
-        label_columns = sorted(set(
-            key for row in rows for key in row.labels
-        ))
-        writer = CSVWorkloadWriter(f, label_columns=label_columns)
+        writer = CSVWorkloadWriter(f)
         for row in rows:
             writer.write_row(row)
 
@@ -164,12 +159,8 @@ def mkregression_command(params_file, target_dir, force=False):
     
     with open(target_trace, 'w') as f:
 
-        # collecting all the rows first to find label keys
         rows = list(trace_generator.generate_rows())
-        label_columns = sorted(set(
-            key for row in rows for key in row.labels
-        ))
-        writer = CSVWorkloadWriter(f, label_columns=label_columns)
+        writer = CSVWorkloadWriter(f)
         for row in rows:
             writer.write_row(row)
 

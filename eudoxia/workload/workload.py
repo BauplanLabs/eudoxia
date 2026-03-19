@@ -3,7 +3,7 @@ import numpy as np
 import random
 from typing import List, Iterator, NamedTuple, Optional
 from abc import ABC, abstractmethod
-from eudoxia.utils import Priority, DagShape, OpType
+from eudoxia.utils import Priority, DagShape
 from .pipeline import Pipeline, Operator, Segment
 
 logger = logging.getLogger(__name__)
