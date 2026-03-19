@@ -50,5 +50,7 @@ class TestCSVWorkloadWriter(unittest.TestCase):
         self.assertEqual(original_normalized, generated_normalized)
 
 
+
+
 if __name__ == '__main__':
     unittest.main()

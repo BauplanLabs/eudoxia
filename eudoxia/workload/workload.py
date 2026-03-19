@@ -180,12 +180,16 @@ class WorkloadGenerator(Workload):
                 if curr_num_ops < 1:
                     curr_num_ops = 1
 
+
             created_ops = []
             for op_idx in range(curr_num_ops):
                 parents = None
+                
                 if dag_shape == DagShape.LINEAR:
+
                     if created_ops:
                         parents = [created_ops[-1]]
+
                 elif dag_shape == DagShape.BRANCH_IN:
                     # Branch-in: all early operators are roots, and the final
                     # operator depends on every earlier operator.
@@ -200,7 +204,11 @@ class WorkloadGenerator(Workload):
                 else:
                     raise ValueError(f"Unsupported DAG shape: {dag_shape}")
 
-                op = p.new_operator(parents)
+                # Empty labels field for eudoxia's generated pipelines (tool for generation with labels is separate)
+                labels = {}
+
+                # Creating operator with labels dict for features
+                op = p.new_operator(parents, labels)
                 created_ops.append(op)
 
                 if priority == Priority.QUERY.value:

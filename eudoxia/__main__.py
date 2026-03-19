@@ -103,9 +103,9 @@ def gentrace_command(params_file, output_file, force=False):
 
     # Write Trace to CSV
     with open(output_file, 'w') as f:
+        rows = list(trace_generator.generate_rows())
         writer = CSVWorkloadWriter(f)
-
-        for row in trace_generator.generate_rows():
+        for row in rows:
             writer.write_row(row)
 
     print(f"Generated workload trace saved to {output_file}")
@@ -155,10 +155,15 @@ def mkregression_command(params_file, target_dir, force=False):
         ticks_per_second=params['ticks_per_second'],
         duration_secs=params['duration']
     )
+
+    
     with open(target_trace, 'w') as f:
+
+        rows = list(trace_generator.generate_rows())
         writer = CSVWorkloadWriter(f)
-        for row in trace_generator.generate_rows():
+        for row in rows:
             writer.write_row(row)
+
     print(f"Generated trace -> {target_trace}")
 
     # Run simulation with the trace to get expected output
