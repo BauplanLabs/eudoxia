@@ -229,11 +229,10 @@ def get_param_defaults() -> Dict:
         "random_seed": 42,
 
         ### Estimator Params ###
-        # estimator algorithm: None (default, no estimator) or "noisyoracle"
+        # estimator algorithm: None (default, no estimator) or "noisy"
         "estimator_algo": None,
         # lognormal noise sigma (0.0 = no noise); only used when estimator_algo is set
         "noisy_estimator_sigma": 0.0,
-        # estimator_seed defaults to random_seed in estimator construction
     }
 
 def parse_args_with_defaults(params: Dict) -> Dict:

@@ -165,7 +165,7 @@ class Operator(Node):
         this information is hidden from the scheduler - it must make decisions
         without knowing the true resource requirements.
 
-        The 'estimate' field is populated by an estimator (e.g. NoisyEstimator)
+        The 'estimate' field is populated by an estimator (e.g. "noisy")
         before the scheduler sees this operator.
         """
         runtime = self.pipeline.runtime_status()

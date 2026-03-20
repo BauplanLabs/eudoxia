@@ -14,9 +14,9 @@ def _make_op(segments):
 
 
 def _make_estimator(sigma=0.0, seed=42):
-    """Create an Estimator with noisyoracle algo."""
+    """Create an Estimator with noisy algo."""
     return Estimator(
-        estimator_algo="noisyoracle",
+        estimator_algo="noisy",
         noisy_estimator_sigma=sigma,
         random_seed=seed,
     )
@@ -38,12 +38,12 @@ def test_unknown_algo_raises():
 
 
 def test_estimate_returns_peak_memory():
-    """Estimator populates mem_peak_gb_est from segment memory_gb."""
+    """Estimator populates mem_peak_gb from segment memory_gb."""
     estimator = _make_estimator()
     op = _make_op([Segment(baseline_cpu_seconds=10, cpu_scaling="const",
                            memory_gb=32.0, storage_read_gb=50)])
     estimator.estimate(op)
-    assert op.estimate.mem_peak_gb_est == 32.0
+    assert op.estimate.mem_peak_gb == 32.0
 
 
 def test_estimate_falls_back_to_storage_read():
@@ -52,7 +52,7 @@ def test_estimate_falls_back_to_storage_read():
     op = _make_op([Segment(baseline_cpu_seconds=10, cpu_scaling="const",
                            memory_gb=None, storage_read_gb=55)])
     estimator.estimate(op)
-    assert op.estimate.mem_peak_gb_est == 55.0
+    assert op.estimate.mem_peak_gb == 55.0
 
 
 def test_estimate_takes_max_across_segments():
@@ -64,7 +64,7 @@ def test_estimate_takes_max_across_segments():
         Segment(baseline_cpu_seconds=5, cpu_scaling="const", memory_gb=30, storage_read_gb=0),
     ])
     estimator.estimate(op)
-    assert op.estimate.mem_peak_gb_est == 50.0
+    assert op.estimate.mem_peak_gb == 50.0
 
 
 def test_noise_changes_estimate():
@@ -73,8 +73,8 @@ def test_noise_changes_estimate():
     op = _make_op([Segment(baseline_cpu_seconds=10, cpu_scaling="const",
                            memory_gb=42.0, storage_read_gb=0)])
     estimator.estimate(op)
-    assert op.estimate.mem_peak_gb_est != 42.0
-    assert op.estimate.mem_peak_gb_est > 0
+    assert op.estimate.mem_peak_gb != 42.0
+    assert op.estimate.mem_peak_gb > 0
 
 
 def test_consecutive_estimates_get_independent_noise():
@@ -86,7 +86,7 @@ def test_consecutive_estimates_get_independent_noise():
                             memory_gb=42.0, storage_read_gb=0)])
     estimator.estimate(op1)
     estimator.estimate(op2)
-    assert op1.estimate.mem_peak_gb_est != op2.estimate.mem_peak_gb_est
+    assert op1.estimate.mem_peak_gb != op2.estimate.mem_peak_gb
 
 
 def test_same_seed_produces_same_estimate():
@@ -97,7 +97,7 @@ def test_same_seed_produces_same_estimate():
                             memory_gb=42.0, storage_read_gb=0)])
     _make_estimator(sigma=1.0, seed=42).estimate(op1)
     _make_estimator(sigma=1.0, seed=42).estimate(op2)
-    assert op1.estimate.mem_peak_gb_est == op2.estimate.mem_peak_gb_est
+    assert op1.estimate.mem_peak_gb == op2.estimate.mem_peak_gb
 
 
 def test_different_seed_produces_different_estimate():
@@ -108,7 +108,7 @@ def test_different_seed_produces_different_estimate():
                             memory_gb=42.0, storage_read_gb=0)])
     _make_estimator(sigma=1.0, seed=1).estimate(op1)
     _make_estimator(sigma=1.0, seed=999).estimate(op2)
-    assert op1.estimate.mem_peak_gb_est != op2.estimate.mem_peak_gb_est
+    assert op1.estimate.mem_peak_gb != op2.estimate.mem_peak_gb
 
 
 def test_negative_sigma_raises():
@@ -123,7 +123,7 @@ def test_default_estimate_serializes_with_none():
     op = pipeline.new_operator()
     op.add_segment(Segment(baseline_cpu_seconds=1, cpu_scaling="const", storage_read_gb=10))
     assert op.estimate == Estimate()
-    assert op.to_dict()["estimate"] == {"mem_peak_gb_est": None}
+    assert op.to_dict()["estimate"] == {"mem_peak_gb": None}
 
 
 def test_to_dict_reflects_estimate():
@@ -134,4 +134,4 @@ def test_to_dict_reflects_estimate():
     op.add_segment(Segment(baseline_cpu_seconds=1, cpu_scaling="const",
                            memory_gb=42.0, storage_read_gb=10))
     estimator.estimate(op)
-    assert op.to_dict()["estimate"]["mem_peak_gb_est"] == 42.0
+    assert op.to_dict()["estimate"]["mem_peak_gb"] == 42.0

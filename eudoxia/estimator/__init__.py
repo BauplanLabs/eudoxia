@@ -1,5 +1,5 @@
-from .decorators import register_estimator
+from .decorators import register_estimator_init, register_estimator
 from .estimator import Estimate, Estimator
 
-# Import estimator modules so decorators run at import time.
+# Import all estimator implementations to register them
 from . import noisy
