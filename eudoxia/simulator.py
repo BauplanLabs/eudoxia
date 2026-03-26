@@ -207,6 +207,11 @@ def get_param_defaults() -> Dict:
         "interactive_prob": 0.3,
         "query_prob": 0.1,
         "batch_prob": 0.6,
+        # probabilities for non-query DAG shapes.
+        # defaults keep historical behavior (all non-query DAGs are linear).
+        "dag_linear_prob": 1.0,
+        "dag_branch_in_prob": 0.0,
+        "dag_branch_out_prob": 0.0,
         # value between 0 and 1 indicating on average how IO heavy a segment is. Low
         # value is IO heavier
         "cpu_io_ratio": 0.5,

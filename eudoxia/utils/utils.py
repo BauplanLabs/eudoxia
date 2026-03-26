@@ -8,3 +8,9 @@ class Priority(Enum):
     QUERY = 1
     INTERACTIVE = 2
     BATCH_PIPELINE = 3
+
+
+class DagShape(Enum):
+    LINEAR = "linear"
+    BRANCH_IN = "branch_in"
+    BRANCH_OUT = "branch_out"

@@ -1,7 +1,76 @@
 import pytest
-import numpy as np
 from eudoxia.workload import WorkloadGenerator
 from eudoxia.simulator import get_param_defaults
+
+
+def _generate_interactive_pipelines(dag_linear_prob, dag_branch_in_prob, dag_branch_out_prob):
+    params = get_param_defaults()
+    params.update({
+        "random_seed": 42,
+        "waiting_seconds_mean": 0.001,
+        "num_pipelines": 10,
+        "num_operators": 5,
+        "num_segs": 1,
+        "cpu_io_ratio": 0.5,
+        "interactive_prob": 1.0,
+        "query_prob": 0.0,
+        "batch_prob": 0.0,
+        "dag_linear_prob": dag_linear_prob,
+        "dag_branch_in_prob": dag_branch_in_prob,
+        "dag_branch_out_prob": dag_branch_out_prob,
+    })
+    gen = WorkloadGenerator(**params)
+    return gen.generate_pipelines()
+
+
+def _is_linear_dag(pipeline):
+    ops = list(pipeline.values)
+    if not ops:
+        return False
+    if len(ops[0].parents) != 0:
+        return False
+    for i in range(1, len(ops)):
+        if ops[i].parents != [ops[i - 1]]:
+            return False
+    return True
+
+
+def _is_branch_in_dag(pipeline):
+    ops = list(pipeline.values)
+    if not ops:
+        return False
+    if len(ops) == 1:
+        return len(ops[0].parents) == 0
+
+    join_op = ops[-1]
+    if len(join_op.parents) != len(ops) - 1 or len(join_op.children) != 0:
+        return False
+    for op in ops[:-1]:
+        if len(op.parents) != 0:
+            return False
+        if op.children != [join_op]:
+            return False
+    return True
+
+def _is_branch_out_dag(pipeline):
+    ops = list(pipeline.values)
+    if not ops:
+        return False
+    if len(ops) == 1:
+        return len(ops[0].parents) == 0
+
+    join_op = ops[0]
+    if len(join_op.parents) != 0 or len(join_op.children) != len(ops) - 1:
+        return False
+    for op in ops[1:]:
+        if len(op.parents) != 1:
+            return False
+        if len(op.children) != 0:
+            return False
+    return True
+    
+
+    
 
 
 def test_workload_generator_determinism():
@@ -60,3 +129,24 @@ def test_workload_generator_determinism():
         tick += 1
     
     assert pipeline_cases >= 5, f"Only got {pipeline_cases} pipeline generation events in {tick} ticks"
+
+
+def test_dag_linear_structure():
+    pipelines = _generate_interactive_pipelines(dag_linear_prob=1.0, dag_branch_in_prob=0.0, dag_branch_out_prob=0.0)
+    assert len(pipelines) == 10
+    for p in pipelines:
+        assert _is_linear_dag(p), f"Expected linear DAG, got structure with {len(list(p.values))} ops"
+
+
+def test_dag_branch_in_structure():
+    pipelines = _generate_interactive_pipelines(dag_linear_prob=0.0, dag_branch_in_prob=1.0, dag_branch_out_prob=0.0)
+    assert len(pipelines) == 10
+    for p in pipelines:
+        assert _is_branch_in_dag(p), f"Expected branch-in DAG, got structure with {len(list(p.values))} ops"
+
+
+def test_dag_branch_out_structure():
+    pipelines = _generate_interactive_pipelines(dag_linear_prob=0.0, dag_branch_in_prob=0.0, dag_branch_out_prob=1.0)
+    assert len(pipelines) == 10
+    for p in pipelines:
+        assert _is_branch_out_dag(p), f"Expected branch-out DAG, got structure with {len(list(p.values))} ops"
