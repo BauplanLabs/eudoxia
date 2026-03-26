@@ -38,6 +38,8 @@ class PipelineStats(NamedTuple):
     completion_count: int
     mean_latency_seconds: float
     p99_latency_seconds: float
+    mean_queueing_delay: float
+
 
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization."""
@@ -46,10 +48,11 @@ class PipelineStats(NamedTuple):
             'completion_count': self.completion_count,
             'mean_latency_seconds': self.mean_latency_seconds,
             'p99_latency_seconds': self.p99_latency_seconds,
+            'mean_queueing_delay': self.mean_queueing_delay
         }
 
 
-def compute_pipeline_stats(arrival_count: int, latencies: List[int], ticks_per_second: int) -> PipelineStats:
+def compute_pipeline_stats(arrival_count: int, latencies: List[int], queueing_delays: List[int], ticks_per_second: int) -> PipelineStats:
     """Compute PipelineStats from arrival count and list of latency ticks."""
     completion_count = len(latencies)
     if latencies:
@@ -58,11 +61,18 @@ def compute_pipeline_stats(arrival_count: int, latencies: List[int], ticks_per_s
     else:
         mean_latency_seconds = float('nan')
         p99_latency_seconds = float('nan')
+    
+    if queueing_delays:
+        mean_q_delay = (sum(queueing_delays) / len(queueing_delays)) / ticks_per_second
+    else:
+        mean_q_delay = 0.0
+    
     return PipelineStats(
         arrival_count=arrival_count,
         completion_count=completion_count,
         mean_latency_seconds=mean_latency_seconds,
         p99_latency_seconds=p99_latency_seconds,
+        mean_queueing_delay=mean_q_delay
     )
 
 
@@ -327,6 +337,11 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         Priority.INTERACTIVE: [],
         Priority.BATCH_PIPELINE: [],
     }
+    pipeline_queueing_delays_by_priority: Dict[Priority, List[int]] = {
+        Priority.QUERY: [],
+        Priority.INTERACTIVE: [],
+        Priority.BATCH_PIPELINE: [],
+    }
 
     # IMPORTANT!  This is the main simulation loop.
     for tick_number in range(max_ticks):
@@ -345,11 +360,14 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         executor_results = executor.run_one_tick(suspensions, assignments)
 
         for assignment in assignments:
-            # An assignment contains a list of operators (ops)
-            for op in assignment.ops:
-                # If this pipeline hasn't been assigned a tick yet, record it now
-                if op.pipeline.first_assignment_tick is None:
-                    op.pipeline.first_assignment_tick = tick_number
+            # The assignment object contains the pipeline ID
+            pid = assignment.pipeline_id 
+            
+            # Use the ID to grab the actual pipeline object from our tracking dict
+            if pid in outstanding_pipelines:
+                pipeline = outstanding_pipelines[pid]
+                # Now record the assignment using the proper runtime status
+                pipeline.runtime_status().record_assignment(tick_number)
 
         # track stats
         num_pipelines_created += len(new_pipelines)
@@ -368,12 +386,10 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
                     pipeline.runtime_status().record_finish(tick_number)
 
 
-                    # Only calculate if we actually recorded a start time
-                    if pipeline.first_assignment_tick is not None:
-                        # (Start Tick - Arrival Tick) / Precision = Delay in Seconds
-                        arrival_tick = pipeline.runtime_status().arrival_tick
-                        q_delay_seconds = (pipeline.first_assignment_tick - arrival_tick) / ticks_per_second
-                        all_queueing_delays.append(q_delay_seconds)
+                    # Queueing delay calculation (no 'None' check needed)
+                    status = pipeline.runtime_status()
+                    q_delay = status.first_assignment_tick - status.arrival_tick
+                    pipeline_queueing_delays_by_priority[pipeline.priority].append(q_delay)
 
                     latency_ticks = pipeline.runtime_status().get_latency_ticks()
                     pipeline_latencies_by_priority[pipeline.priority].append(latency_ticks)
@@ -396,23 +412,26 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     # Compute pipeline stats by category
     all_arrivals = sum(pipeline_arrivals_by_priority.values())
     all_latencies = sum(pipeline_latencies_by_priority.values(), [])
-    pipelines_all = compute_pipeline_stats(all_arrivals, all_latencies, ticks_per_second)
+    all_q_delays = sum(pipeline_queueing_delays_by_priority.values(), [])
+
+    pipelines_all = compute_pipeline_stats(all_arrivals, all_latencies, all_q_delays, ticks_per_second)
+
     pipelines_query = compute_pipeline_stats(
         pipeline_arrivals_by_priority[Priority.QUERY],
         pipeline_latencies_by_priority[Priority.QUERY],
+        pipeline_queueing_delays_by_priority[Priority.QUERY],
         ticks_per_second)
     pipelines_interactive = compute_pipeline_stats(
         pipeline_arrivals_by_priority[Priority.INTERACTIVE],
         pipeline_latencies_by_priority[Priority.INTERACTIVE],
+        pipeline_queueing_delays_by_priority[Priority.QUERY],
         ticks_per_second)
     pipelines_batch = compute_pipeline_stats(
         pipeline_arrivals_by_priority[Priority.BATCH_PIPELINE],
         pipeline_latencies_by_priority[Priority.BATCH_PIPELINE],
+        pipeline_queueing_delays_by_priority[Priority.QUERY],
         ticks_per_second)
     
-
-    mean_q_delay = sum(all_queueing_delays) / len(all_queueing_delays) if all_queueing_delays else 0.0
-    print(f"\n[STATS] Mean Initial Queueing Delay: {mean_q_delay:.4f}s")
 
     return SimulatorStats(
         pipelines_created=num_pipelines_created,

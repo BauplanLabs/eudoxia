@@ -56,6 +56,7 @@ class PipelineRuntimeStatus:
         self.state_counts: Dict[OperatorState, int] = {state: 0 for state in OperatorState}
         self.arrival_tick: Optional[int] = None
         self.finish_tick: Optional[int] = None
+        self.first_assignment_tick: Optional[int] = None
 
         for operator in pipeline.values:
             self.operator_states[operator] = OperatorState.PENDING
@@ -108,6 +109,11 @@ class PipelineRuntimeStatus:
         """Record the tick at which this pipeline finished."""
         assert self.finish_tick is None, "finish_tick already recorded"
         self.finish_tick = tick
+    
+    def record_assignment(self, tick: int):
+        """Record the tick when the pipeline received its first assignment."""
+        if self.first_assignment_tick is None:
+            self.first_assignment_tick = tick
 
     def get_latency_ticks(self) -> int:
         """Get the latency in ticks (finish_tick - arrival_tick)."""
