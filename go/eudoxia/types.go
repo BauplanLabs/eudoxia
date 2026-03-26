@@ -32,10 +32,11 @@ type Pipeline struct {
 }
 
 type Operator struct {
-	ID                string `json:"id"`
-	State             string `json:"state"`
-	IsAssignableState bool   `json:"is_assignable_state"`
-	ParentsComplete   bool   `json:"parents_complete"`
+	ID                string                 `json:"id"`
+	State             string                 `json:"state"`
+	IsAssignableState bool                   `json:"is_assignable_state"`
+	ParentsComplete   bool                   `json:"parents_complete"`
+	Estimate          map[string]interface{} `json:"estimate"`
 }
 
 type Pool struct {
