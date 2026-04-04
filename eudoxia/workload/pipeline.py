@@ -195,7 +195,7 @@ class Pipeline(Node):
         self.pipeline_id: str = pipeline_id
         self.priority: Priority = priority
         self.values: DAG[Operator] = DAG()
-
+        
         # MUTABLE: Execution state tracking (lazy-initialized via runtime_status() method)
         self._runtime_status: Optional['PipelineRuntimeStatus'] = None
 
