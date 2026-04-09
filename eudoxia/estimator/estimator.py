@@ -27,7 +27,7 @@ class Estimator:
 
     def __init__(self, estimator_algo, **params):
         self.params = params
-        if estimator_algo is None:
+        if not estimator_algo:
             self._algo_func = None
         elif estimator_algo not in ESTIMATOR_ALGOS:
             options = sorted(ESTIMATOR_ALGOS.keys())
