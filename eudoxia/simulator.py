@@ -227,6 +227,8 @@ def get_param_defaults() -> Dict:
         "multi_operator_containers": True,
         # allow container allocations to exceed pool capacity (consumption still capped)
         "allow_memory_overcommit": False,
+        # if True: if a parent and child operator are assigned to different machines, an exception will be raised, on the assumption that intermediate data produced by the parent is not available to the child
+        "enforce_data_locality": False,
         # random seed for workload generation
         "random_seed": 42,
 

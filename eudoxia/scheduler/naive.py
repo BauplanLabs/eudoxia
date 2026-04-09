@@ -78,7 +78,8 @@ def naive_pipeline(s, results: List[ExecutionResult],
             # pipelines to other pools, in the outer loop)
             assignment = Assignment(ops=op_list, cpu=avail_cpu_pool, ram=avail_ram_pool,
                                     priority=pipeline.priority, pool_id=pool_id,
-                                    pipeline_id=pipeline.pipeline_id)
+                                    pipeline_id=pipeline.pipeline_id,
+                                    enforce_locality=s.executor.enforce_data_locality)
             assignments.append(assignment)
             break
 

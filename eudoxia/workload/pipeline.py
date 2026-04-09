@@ -150,13 +150,17 @@ class Operator(Node):
         """Get all segments in this operator"""
         return self.values
 
-    def transition(self, new_state):
+    def transition(self, new_state, pool_id=None, enforce_locality=False):
         """Transition this operator to a new state."""
-        self.pipeline.runtime_status().transition(self, new_state)
+        self.pipeline.runtime_status().transition(self, new_state, pool_id=pool_id, enforce_locality=enforce_locality)
 
     def state(self) -> 'OperatorState':
         """Get the current state of this operator."""
-        return self.pipeline.runtime_status().operator_states[self]
+        return self.pipeline.runtime_status().operator_status[self].state
+
+    def update_completed_pool(self, pool_id: int):
+        """Record the pool where this operator completed."""
+        self.pipeline.runtime_status().operator_status[self].pool_id = pool_id
 
     def to_dict(self) -> dict:
         """Serialize operator to JSON-compatible dict.
@@ -169,9 +173,9 @@ class Operator(Node):
         before the scheduler sees this operator.
         """
         runtime = self.pipeline.runtime_status()
-        state = runtime.operator_states[self]
+        state = runtime.operator_status[self].state
         parents_complete = all(
-            runtime.operator_states[p] == OperatorState.COMPLETED
+            runtime.operator_status[p].state == OperatorState.COMPLETED
             for p in self.parents
         )
         return {
