@@ -2,12 +2,26 @@ import io
 import tempfile
 import unittest
 import csv
+import tomllib
 from unittest.mock import patch
 from eudoxia.__main__ import main
+from eudoxia.simulator import get_param_defaults
 
 
 class TestCommandLine(unittest.TestCase):
     
+    def test_init_command(self):
+        """Test init command creates a valid TOML file with default values."""
+        with tempfile.NamedTemporaryFile(suffix='.toml', delete=False) as f:
+            output_file = f.name
+        main(['init', output_file, '-f'])
+        with open(output_file, 'rb') as f:
+            written = tomllib.load(f)
+        defaults = get_param_defaults()
+        for key, value in defaults.items():
+            self.assertIn(key, written)
+            self.assertEqual(written[key], value, f"mismatch for {key}")
+
     def test_run_with_params_only(self):
         """Test run command with just params file"""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:

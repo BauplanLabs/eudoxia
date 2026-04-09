@@ -80,7 +80,7 @@ class SimulatorStats(NamedTuple):
     assignments: int
     suspensions: int
     failures: int
-    failure_error_counts: int
+    failure_error_counts: Dict[str, int]
     pipelines_all: PipelineStats
     pipelines_query: PipelineStats
     pipelines_interactive: PipelineStats
@@ -229,8 +229,8 @@ def get_param_defaults() -> Dict:
         "random_seed": 42,
 
         ### Estimator Params ###
-        # estimator algorithm: None (default, no estimator) or "noisy"
-        "estimator_algo": None,
+        # estimator algorithm: "" (default, no estimator) or "noisy"
+        "estimator_algo": "",
         # lognormal noise sigma (0.0 = no noise); only used when estimator_algo is set
         "noisy_estimator_sigma": 0.0,
     }
