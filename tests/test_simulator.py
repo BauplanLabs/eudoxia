@@ -2,7 +2,7 @@ import pytest
 import math
 from typing import Dict, List
 from eudoxia.simulator import run_simulator, get_param_defaults, SimulatorStats, PipelineStats
-from eudoxia.workload import Workload, Pipeline
+from eudoxia.workload import Workload, Pipeline, Segment
 from eudoxia.utils import Priority
 
 class MockWorkload(Workload):
@@ -163,6 +163,7 @@ def test_adjusted_latency():
     ignored_sim_fields = {
         "pipelines_created": None, "containers_completed": None, "throughput": None, "p99_latency": None,
         "assignments": None, "suspensions": None, "failures": 0, "failure_error_counts": {},
+        "mean_memory_allocated_percent": None, "mean_memory_consumed_percent": None,
     }
     ignored_pipe_fields = {
         "p99_latency_seconds": None,
@@ -234,3 +235,43 @@ def test_adjusted_latency():
     weights = {Priority.QUERY: 1, Priority.INTERACTIVE: 1, Priority.BATCH_PIPELINE: 1}
     result = stats.adjusted_latency(weights=weights, divide_by_completion_rate=True)
     assert stats.adjusted_latency() == float('inf')
+
+
+@pytest.mark.parametrize("num_pools", [1, 3])
+def test_memory_stats(num_pools):
+    """Test mean memory allocated/consumed percentages.
+
+    Two pipelines arrive at tick 0 on 10GB pool(s) (overbook scheduler,
+    memory overcommit enabled).  Each container gets its full pool RAM as
+    allocation but only consumes 5GB.  One op runs 5s, the other 10s.
+
+    With 1 pool (10GB total):
+      Seconds 0-4: allocated=200%, consumed=100%
+      Seconds 5-9: allocated=100%, consumed=50%
+      Mean allocated=150%, mean consumed=75%
+
+    With N pools the percentages are divided by N (total RAM is N*10GB).
+    """
+    params = get_param_defaults()
+    params['scheduler_algo'] = 'overbook'
+    params['allow_memory_overcommit'] = True
+    params['num_pools'] = num_pools
+    params['cpus_per_pool'] = 2
+    params['ram_gb_per_pool'] = 10
+    params['ticks_per_second'] = 10
+    params['duration'] = 10
+
+    p1 = Pipeline("p1", Priority.BATCH_PIPELINE)
+    op1 = p1.new_operator()
+    op1.add_segment(Segment(baseline_cpu_seconds=5, cpu_scaling="const", memory_gb=5))
+
+    p2 = Pipeline("p2", Priority.BATCH_PIPELINE)
+    op2 = p2.new_operator()
+    op2.add_segment(Segment(baseline_cpu_seconds=10, cpu_scaling="const", memory_gb=5))
+
+    workload = MockWorkload({0: [p1, p2]}, params['ticks_per_second'])
+    stats = run_simulator(params, workload=workload)
+
+    assert stats.containers_completed == 2
+    assert stats.mean_memory_allocated_percent == pytest.approx(150.0 / num_pools)
+    assert stats.mean_memory_consumed_percent == pytest.approx(75.0 / num_pools)

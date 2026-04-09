@@ -81,6 +81,8 @@ class SimulatorStats(NamedTuple):
     suspensions: int
     failures: int
     failure_error_counts: Dict[str, int]
+    mean_memory_allocated_percent: float
+    mean_memory_consumed_percent: float
     pipelines_all: PipelineStats
     pipelines_query: PipelineStats
     pipelines_interactive: PipelineStats
@@ -338,6 +340,8 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         Priority.INTERACTIVE: [],
         Priority.BATCH_PIPELINE: [],
     }
+    memory_allocated_percent_samples: List[float] = []
+    memory_consumed_percent_samples: List[float] = []
 
     # IMPORTANT!  This is the main simulation loop.
     for tick_number in range(max_ticks):
@@ -383,6 +387,8 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
             consumed_ram = executor.get_consumed_ram_gb()
             pct_allocated = 100.0 * allocated_ram / total_ram
             pct_consumed = 100.0 * consumed_ram / total_ram
+            memory_allocated_percent_samples.append(pct_allocated)
+            memory_consumed_percent_samples.append(pct_consumed)
             logger.info(f"memory: total={total_ram:.0f}GB allocated={pct_allocated:.1f}% consumed={pct_consumed:.1f}%")
 
     # TODO: better way to calculate work throuphput, going by num ops, etc. is
@@ -416,6 +422,8 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         suspensions=num_suspenions,
         failures=num_failures,
         failure_error_counts=dict(failure_error_counts),
+        mean_memory_allocated_percent=float(np.mean(memory_allocated_percent_samples)) if memory_allocated_percent_samples else float('nan'),
+        mean_memory_consumed_percent=float(np.mean(memory_consumed_percent_samples)) if memory_consumed_percent_samples else float('nan'),
         pipelines_all=pipelines_all,
         pipelines_query=pipelines_query,
         pipelines_interactive=pipelines_interactive,
