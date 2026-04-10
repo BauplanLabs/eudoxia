@@ -11,6 +11,7 @@ from eudoxia.scheduler import Scheduler
 from eudoxia.workload import Workload, WorkloadGenerator, Pipeline
 from eudoxia.executor.assignment import Assignment
 from eudoxia.estimator import Estimator
+from eudoxia.clock import SimClock
 
 __all__ = ["run_simulator", "parse_args_with_defaults", "get_param_defaults", "SimulatorStats", "PipelineStats"]
 
@@ -20,15 +21,12 @@ class SimulatedTimeFormatter(logging.Formatter):
     """Custom formatter that adds elapsed simulation time to log
     messages.  Unlike normal logging formats based on wall-clock time,
     we want to print elapsed simulator time."""
-    def __init__(self):
-        self.elapsed_seconds = 0.0
-
-    def set_simulated_elapsed_seconds(self, seconds):
-        self.elapsed_seconds = seconds
+    def __init__(self, clock):
+        self.clock = clock
 
     def format(self, record):
         # Format: [elapsed_time] LEVEL:logger_name: message
-        return f"[{self.elapsed_seconds:6.1f}s] {record.levelname}:{record.name}: {record.getMessage()}"
+        return f"[{self.clock.now_seconds():6.1f}s] {record.levelname}:{record.name}: {record.getMessage()}"
 
 class PipelineStats(NamedTuple):
     """Statistics for a category of pipelines.  completion_count only
@@ -298,23 +296,25 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         "CPU IO ratio must be between 0 and 1"
     
     # INITIALIZATION
+    ticks_per_second = params["ticks_per_second"]
+    clock = SimClock(ticks_per_second)
+
+    # TODO: pass clock to workload (WorkloadTrace has a shadow tick counter
+    # that should use clock.now_ticks(), but workload is sometimes created
+    # before run_simulator is called, so the clock doesn't exist yet)
     if workload is None:
         workload = WorkloadGenerator(**params)
 
     executor = Executor(**params)
-    scheduler = Scheduler(executor, **params)
+    scheduler = Scheduler(clock, executor, **params)
 
     estimator = Estimator(**params)
 
-    # Set up custom logging with elapsed time
-    ticks_per_second = params["ticks_per_second"]
-
     # Configure log handlers to use simulated time (instead of real time)
-    sim_formatter = SimulatedTimeFormatter()
+    sim_formatter = SimulatedTimeFormatter(clock)
     for handler in logging.getLogger().handlers:
         handler.setFormatter(sim_formatter)
 
-    tick_number = 0
     max_ticks = int(params["duration"] * params["ticks_per_second"])
     logger.info(f"Running for {params['duration']}s or {max_ticks} ticks")
     logger.info(f"Running with random seed {params['random_seed']}")
@@ -345,7 +345,7 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
 
     # IMPORTANT!  This is the main simulation loop.
     for tick_number in range(max_ticks):
-        sim_formatter.set_simulated_elapsed_seconds(tick_number / ticks_per_second)
+        clock.tick()
 
         # track new work
         new_pipelines: List[Pipeline] = workload.run_one_tick()

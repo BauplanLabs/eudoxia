@@ -1,5 +1,6 @@
 from typing import List, Tuple, Dict
 import uuid
+from eudoxia.clock import SimClock
 from eudoxia.executor import Executor
 from eudoxia.executor.assignment import Suspend, Assignment, ExecutionResult
 from eudoxia.workload import Pipeline, Operator
@@ -18,7 +19,8 @@ class Scheduler:
 
     # ''' The table of pre-implemented scheduling algorithms and corresponding
     # initialization functions'''
-    def __init__(self, executor: Executor, scheduler_algo, **params):
+    def __init__(self, clock: SimClock, executor: Executor, scheduler_algo, **params):
+        self.clock = clock
         self.executor = executor
         self.params = params
         if not scheduler_algo in SCHEDULING_ALGOS:

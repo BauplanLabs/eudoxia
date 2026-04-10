@@ -1,4 +1,9 @@
+import json
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
 import pytest
+from eudoxia.clock import SimClock
 from eudoxia.scheduler import Scheduler
 from eudoxia.executor import Executor
 from eudoxia.executor.container import Container
@@ -18,7 +23,7 @@ def test_retry_only_assigns_incomplete_operators(scheduler_algo):
         ticks_per_second=10,
         multi_operator_containers=True,
     )
-    scheduler = Scheduler(executor, scheduler_algo=scheduler_algo, multi_operator_containers=True)
+    scheduler = Scheduler(SimClock(ticks_per_second=10), executor, scheduler_algo=scheduler_algo, multi_operator_containers=True)
 
     # Pipeline with 2 ops
     pipeline = Pipeline("test", Priority.BATCH_PIPELINE)
@@ -65,7 +70,7 @@ def test_resume_only_assigns_incomplete_operators(scheduler_algo):
         ticks_per_second=10,
         multi_operator_containers=True,
     )
-    scheduler = Scheduler(executor, scheduler_algo=scheduler_algo, multi_operator_containers=True)
+    scheduler = Scheduler(SimClock(ticks_per_second=10), executor, scheduler_algo=scheduler_algo, multi_operator_containers=True)
 
     # Pipeline with 2 ops
     pipeline = Pipeline("test", Priority.BATCH_PIPELINE)
@@ -122,7 +127,7 @@ def test_op_not_double_queued_across_ticks():
         ticks_per_second=10,
         multi_operator_containers=False,
     )
-    scheduler = Scheduler(executor, scheduler_algo="priority", multi_operator_containers=False)
+    scheduler = Scheduler(SimClock(ticks_per_second=10), executor, scheduler_algo="priority", multi_operator_containers=False)
 
     # Pipeline: op1 has 20 children, op2 is independent
     pipeline = Pipeline("test", Priority.BATCH_PIPELINE)
@@ -180,7 +185,7 @@ def test_failed_op_gets_retry_stats():
         ticks_per_second=10,
         multi_operator_containers=False,
     )
-    scheduler = Scheduler(executor, scheduler_algo="priority", multi_operator_containers=False)
+    scheduler = Scheduler(SimClock(ticks_per_second=10), executor, scheduler_algo="priority", multi_operator_containers=False)
 
     # Single op pipeline with memory requirement higher than initial allocation will provide
     # Scheduler gives 10% of pool (5 GB), but op needs 10 GB -> OOM
@@ -216,7 +221,7 @@ def test_partial_failure_unblocks_dependent_op():
         ticks_per_second=10,
         multi_operator_containers=True,
     )
-    scheduler = Scheduler(executor, scheduler_algo="priority", multi_operator_containers=True)
+    scheduler = Scheduler(SimClock(ticks_per_second=10), executor, scheduler_algo="priority", multi_operator_containers=True)
 
     # Pipeline: op1 (small memory) and op2 (will OOM) run together, op3 depends on op1
     #   op1 -> op3
@@ -250,3 +255,56 @@ def test_partial_failure_unblocks_dependent_op():
     assert op1 not in assigned_ops, "completed op1 should not be retried"
     assert op2 in assigned_ops, "failed op2 should be retried"
     assert op3 in assigned_ops, "op3 should be retried (was in failed container)"
+
+
+def test_rest_scheduler_clock():
+    """REST scheduler should send clock tick and sim_time_seconds from SimClock."""
+    received = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            if self.path == "/schedule":
+                received.append(body)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"assignments": [], "suspensions": []}).encode())
+
+        def log_message(self, *args):
+            pass  # silence request logs
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever)
+    thread.daemon = True
+    thread.start()
+
+    try:
+        clock = SimClock(ticks_per_second=10)
+        executor = Executor(
+            num_pools=1, cpus_per_pool=10, ram_gb_per_pool=100, ticks_per_second=10,
+        )
+        scheduler = Scheduler(
+            clock, executor,
+            scheduler_algo="rest",
+            rest_scheduler_addr=f"127.0.0.1:{port}",
+            rest_poll_interval=0.0,  # call every tick
+            duration=10,
+            ticks_per_second=10,
+        )
+
+        # Advance clock a few ticks and call scheduler each time
+        for _ in range(3):
+            clock.tick()
+            scheduler.run_one_tick([], [])
+
+        assert len(received) == 3
+        assert received[0]["tick"] == 0
+        assert received[0]["sim_time_seconds"] == 0.0
+        assert received[1]["tick"] == 1
+        assert received[1]["sim_time_seconds"] == 0.1
+        assert received[2]["tick"] == 2
+        assert received[2]["sim_time_seconds"] == 0.2
+    finally:
+        server.shutdown()
