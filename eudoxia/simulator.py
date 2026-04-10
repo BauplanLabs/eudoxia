@@ -88,6 +88,7 @@ class SimulatorStats(NamedTuple):
     pipelines_interactive: PipelineStats
     pipelines_batch: PipelineStats
 
+    # TODO: add penalty option to give latency for unfinished jobs
     def adjusted_latency(
         self,
         weights: Dict[Priority, float] = None,
