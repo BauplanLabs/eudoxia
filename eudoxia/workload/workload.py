@@ -47,7 +47,7 @@ class WorkloadReader(ABC):
     def get_workload(self, ticks_per_second: int):
         """
         Get a Workload instance from this reader.
-        
+
         Returns:
             WorkloadTrace: A WorkloadTrace that wraps this reader
         """
@@ -256,7 +256,7 @@ class WorkloadGenerator(Workload):
 
 class WorkloadTrace(Workload):
     """Workload implementation that reads from a WorkloadReader and delivers pipelines based on tick timing"""
-    
+
     def __init__(self, reader: 'WorkloadReader', ticks_per_second: int):
         """Initialize with a WorkloadReader and ticks per second"""
         self.reader = reader
@@ -293,6 +293,6 @@ class WorkloadTrace(Workload):
             for pipeline_arrival in self.next_batch:
                 pipelines_to_return.append(pipeline_arrival.pipeline)
             self.advance_to_next_batch()
-        
+
         self.current_tick += 1
         return pipelines_to_return

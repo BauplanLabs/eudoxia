@@ -296,17 +296,19 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         "CPU IO ratio must be between 0 and 1"
     
     # INITIALIZATION
+    ticks_per_second = params["ticks_per_second"]
+    clock = SimClock(ticks_per_second)
+
+    # TODO: pass clock to workload (WorkloadTrace has a shadow tick counter
+    # that should use clock.now_ticks(), but workload is sometimes created
+    # before run_simulator is called, so the clock doesn't exist yet)
     if workload is None:
         workload = WorkloadGenerator(**params)
 
     executor = Executor(**params)
-    scheduler = Scheduler(executor, **params)
+    scheduler = Scheduler(clock, executor, **params)
 
     estimator = Estimator(**params)
-
-    # Set up custom logging with elapsed time
-    ticks_per_second = params["ticks_per_second"]
-    clock = SimClock(ticks_per_second)
 
     # Configure log handlers to use simulated time (instead of real time)
     sim_formatter = SimulatedTimeFormatter(clock)
