@@ -39,13 +39,13 @@ def test_container_oom():
     )
 
     # Start container via pool
-    pool.run_one_tick([], [assignment])
+    pool.run_one_tick(0, [], [assignment])
     container = pool.active_containers[0]
 
     # Run until completion
     ticks_executed = 1  # First tick already done
     while not container.is_completed():
-        pool.run_one_tick([], [])
+        pool.run_one_tick(0, [], [])
         ticks_executed += 1
         assert ticks_executed <= 1000, "Container should complete within 1000 ticks"
 
@@ -77,10 +77,10 @@ def test_container_oom_transitions_remaining_ops_to_failed():
     )
 
     # Start container and run until OOM
-    pool.run_one_tick([], [assignment])
+    pool.run_one_tick(0, [], [assignment])
     container = pool.active_containers[0]
     while not container.is_completed():
-        pool.run_one_tick([], [])
+        pool.run_one_tick(0, [], [])
 
     assert container.error == "OOM"
 
@@ -112,7 +112,7 @@ def test_container_immediate_oom():
     )
 
     # First tick creates container and runs OOM killer
-    results = pool.run_one_tick([], [assignment])
+    results = pool.run_one_tick(0, [], [assignment])
 
     # Container should be killed immediately
     assert len(results) == 1, "Should have one result"

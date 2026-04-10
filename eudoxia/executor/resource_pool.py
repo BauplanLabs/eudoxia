@@ -141,7 +141,17 @@ class ResourcePool:
                 break
             victim.kill("OOM")
 
-    def run_one_tick(self, suspensions: List[Suspend],
+    def _run_out_of_time_killer(self, current_tick: int):
+        """Kill containers that have ops belonging to a timed-out pipeline."""
+        for c in self.active_containers:
+            if c.is_completed():
+                continue
+            for op in c.operators:
+                if op.pipeline.runtime_status().has_timed_out(current_tick):
+                    c.kill("timeout")
+                    break
+
+    def run_one_tick(self, current_tick: int, suspensions: List[Suspend],
                      assignments: List[Assignment]) -> List[ExecutionResult]:
         """
         Run a single tick for the executor, decrement remaining ticks for all
@@ -193,6 +203,9 @@ class ResourcePool:
 
         # Kill as necessary to keep within total and individual limits
         self._run_out_of_memory_killer()
+
+        # Kill containers with ops belonging to timed-out pipelines
+        self._run_out_of_time_killer(current_tick)
 
         # Process completed containers (including those killed by pool-level OOM)
         to_remove = []

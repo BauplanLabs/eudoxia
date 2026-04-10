@@ -53,7 +53,7 @@ def run_command(params_file, workload=None):
     print(f"  Assignments: {stats.assignments}")
     print(f"  Suspensions: {stats.suspensions}")
     print(f"  Failures: {stats.failures}")
-    print(f"  Failure/error counts: {stats.failure_error_counts}")
+    print(f"  Container failure counts: {stats.failure_error_counts}")
     print(f"  Mean memory allocated: {stats.mean_memory_allocated_percent:.1f}%")
     print(f"  Mean memory consumed: {stats.mean_memory_consumed_percent:.1f}%")
     print()

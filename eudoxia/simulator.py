@@ -230,6 +230,10 @@ def get_param_defaults() -> Dict:
         # random seed for workload generation
         "random_seed": 42,
 
+        ### Pipeline Params ###
+        # maximum job time in seconds (0 = no limit)
+        "max_job_seconds": 0,
+
         ### Estimator Params ###
         # estimator algorithm: "" (default, no estimator) or "noisy"
         "estimator_algo": "",
@@ -315,8 +319,9 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         handler.setFormatter(sim_formatter)
 
     tick_number = 0
-    max_ticks = int(params["duration"] * params["ticks_per_second"])
-    logger.info(f"Running for {params['duration']}s or {max_ticks} ticks")
+    max_simulation_ticks = int(params["duration"] * params["ticks_per_second"])
+    max_job_ticks = int(params["max_job_seconds"] * ticks_per_second)
+    logger.info(f"Running for {params['duration']}s or {max_simulation_ticks} ticks")
     logger.info(f"Running with random seed {params['random_seed']}")
 
     # a pipeline may have many operators.  These can get grouped
@@ -329,6 +334,13 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     num_failures = 0
     failure_error_counts = defaultdict(int)
     executor_results = []
+    # outstanding_pipelines tracks pipelines we still expect to complete.
+    # Pipelines are removed when they succeed or time out.  Timed-out
+    # pipelines simply show up as not completed — we don't record their
+    # latency.  Note: the scheduler manages its own queues independently,
+    # so it may still assign ops for a pipeline that has already been
+    # removed from here.  That's fine — the executor's _run_out_of_time_killer
+    # will immediately kill any such containers.
     outstanding_pipelines: Dict[str, Pipeline] = {}
     pipeline_arrivals_by_priority: Dict[Priority, int] = {
         Priority.QUERY: 0,
@@ -344,14 +356,14 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     memory_consumed_percent_samples: List[float] = []
 
     # IMPORTANT!  This is the main simulation loop.
-    for tick_number in range(max_ticks):
+    for tick_number in range(max_simulation_ticks):
         sim_formatter.set_simulated_elapsed_seconds(tick_number / ticks_per_second)
 
         # track new work
         new_pipelines: List[Pipeline] = workload.run_one_tick()
         for p in new_pipelines:
             logger.info(f"Pipeline arrived with Priority {p.priority} and {len(p.values)} op(s)")
-            p.runtime_status().record_arrival(tick_number)
+            p.runtime_status().record_arrival(tick_number, max_job_ticks)
             outstanding_pipelines[p.pipeline_id] = p
             pipeline_arrivals_by_priority[p.priority] += 1
             for op in p.values:
@@ -359,7 +371,7 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
 
         # simulate scheduler/executor
         suspensions, assignments = scheduler.run_one_tick(executor_results, new_pipelines)
-        executor_results = executor.run_one_tick(suspensions, assignments)
+        executor_results = executor.run_one_tick(tick_number, suspensions, assignments)
 
         # track stats
         num_pipelines_created += len(new_pipelines)
@@ -378,6 +390,14 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
                     pipeline.runtime_status().record_finish(tick_number)
                     latency_ticks = pipeline.runtime_status().get_latency_ticks()
                     pipeline_latencies_by_priority[pipeline.priority].append(latency_ticks)
+                    del outstanding_pipelines[pipeline_id]
+
+        # Optimization: periodically remove timed-out pipelines so we
+        # don't keep scanning them for completion every tick.
+        if max_job_ticks > 0 and tick_number % ticks_per_second == 0:
+            for pipeline_id in list(outstanding_pipelines.keys()):
+                pipeline = outstanding_pipelines[pipeline_id]
+                if pipeline.runtime_status().has_timed_out(tick_number):
                     del outstanding_pipelines[pipeline_id]
 
         # log memory stats every 1 second of simulated time

@@ -69,7 +69,7 @@ def test_resource_pool_basic():
     results_by_pipeline = {}
 
     for tick in range(max_ticks):
-        results = pool.run_one_tick(suspensions, assignments)
+        results = pool.run_one_tick(0, suspensions, assignments)
 
         # Organize results by pipeline_id
         for result in results:
@@ -116,7 +116,7 @@ def test_resource_pool_dependencies():
     )
 
     with pytest.raises(AssertionError, match="Dependencies not satisfied"):
-        pool.run_one_tick([], [assignment_b])
+        pool.run_one_tick(0, [], [assignment_b])
 
 
 def test_runtime_status_dependencies():
@@ -214,7 +214,7 @@ def test_memory_allocated_vs_consumed():
     completed = False
     for tick in range(1000):
         assignments = [assignment] if tick == 0 else []
-        results = executor.run_one_tick([], assignments)
+        results = executor.run_one_tick(0, [], assignments)
 
         if results:
             # Container just completed: both should be 0
@@ -287,7 +287,7 @@ def test_memory_overcommit_kills_highest_scorer():
     )
 
     # Start both containers
-    pool.run_one_tick([], [assignment_a, assignment_b])
+    pool.run_one_tick(0, [], [assignment_a, assignment_b])
 
     # Tick until consumption exceeds capacity
     # Memory grows at DISK_SCAN_GB_SEC = 20 GB/sec
@@ -297,7 +297,7 @@ def test_memory_overcommit_kills_highest_scorer():
 
     killed_pipeline = None
     for tick in range(100):
-        results = pool.run_one_tick([], [])
+        results = pool.run_one_tick(0, [], [])
         for r in results:
             if r.failed():
                 # Get pipeline ID from the failed container's ops

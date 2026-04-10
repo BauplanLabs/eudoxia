@@ -157,7 +157,7 @@ def test_op_not_double_queued_across_ticks():
     assert remaining_in_queue > 0, "some children should remain in queue"
 
     # Actually consume resources by passing assignments to executor
-    executor.run_one_tick([], assignments)
+    executor.run_one_tick(0, [], assignments)
 
     # op2 completes
     op2.transition(OperatorState.COMPLETED)
@@ -196,7 +196,7 @@ def test_failed_op_gets_retry_stats():
     first_ram = assignments[0].ram
 
     # Run executor - op will OOM because it needs 10GB but only got 5GB
-    results = executor.run_one_tick([], assignments)
+    results = executor.run_one_tick(0, [], assignments)
     assert len(results) == 1
     assert results[0].error == "OOM"
 
@@ -236,9 +236,9 @@ def test_partial_failure_unblocks_dependent_op():
     assert set(assignments[0].ops) == {op1, op2, op3}
 
     # Run executor until we get a result (op1 should complete, then op2 OOMs)
-    results = executor.run_one_tick([], assignments)
+    results = executor.run_one_tick(0, [], assignments)
     while not results:
-        results = executor.run_one_tick([], [])
+        results = executor.run_one_tick(0, [], [])
     assert len(results) == 1
     assert results[0].error == "OOM"
     assert op1.state() == OperatorState.COMPLETED, "op1 should have completed before OOM"

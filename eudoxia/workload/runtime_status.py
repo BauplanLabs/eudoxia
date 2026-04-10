@@ -56,15 +56,24 @@ class PipelineRuntimeStatus:
         self.state_counts: Dict[OperatorState, int] = {state: 0 for state in OperatorState}
         self.arrival_tick: Optional[int] = None
         self.finish_tick: Optional[int] = None
+        self.max_job_ticks: int = 0
 
         for operator in pipeline.values:
             self.operator_states[operator] = OperatorState.PENDING
             self.state_counts[OperatorState.PENDING] += 1
 
-    def record_arrival(self, tick: int):
+    def record_arrival(self, tick: int, max_job_ticks: int = 0):
         """Record the tick at which this pipeline arrived."""
         assert self.arrival_tick is None, "arrival_tick already recorded"
         self.arrival_tick = tick
+        self.max_job_ticks = max_job_ticks
+
+    def has_timed_out(self, current_tick: int) -> bool:
+        """Check if this pipeline has exceeded its maximum allowed job time."""
+        if self.max_job_ticks <= 0:
+            return False
+        assert self.arrival_tick is not None, "arrival_tick not recorded"
+        return (current_tick - self.arrival_tick) >= self.max_job_ticks
 
     def check_transition(self, operator: 'Operator', new_state: OperatorState) -> tuple[bool, Optional[str]]:
         """
