@@ -11,12 +11,13 @@ class Executor:
     Manager of a pool of resources and active containers, the Executor takes
     assignments and ensures that all costs and resources are accounted for and
     additional are allocated if instructed.
-    
+
     Acts like a cluster manager that keeps track of utilization of machines
     (that is, resource pools).
     """
-    def __init__(self, num_pools, cpus_per_pool, ram_gb_per_pool, ticks_per_second,
+    def __init__(self, clock, num_pools, cpus_per_pool, ram_gb_per_pool, ticks_per_second,
                  allow_memory_overcommit=False, **kwargs):
+        self.clock = clock
         self.num_pools = num_pools
         self.cpus_per_pool = cpus_per_pool
         self.ram_gb_per_pool = ram_gb_per_pool
@@ -26,7 +27,7 @@ class Executor:
         # Initialize pools with identical resources
         self.pools: List[ResourcePool] = []
         for i in range(self.num_pools):
-            new_pool = ResourcePool(pool_id=i, cpu_pool=cpus_per_pool, ram_pool=ram_gb_per_pool,
+            new_pool = ResourcePool(clock, pool_id=i, cpu_pool=cpus_per_pool, ram_pool=ram_gb_per_pool,
                                    ticks_per_second=self.ticks_per_second,
                                    allow_memory_overcommit=allow_memory_overcommit, **kwargs)
             self.pools.append(new_pool)
@@ -64,7 +65,7 @@ class Executor:
         """Return total consumed RAM across all pools in GB."""
         return sum(p.get_consumed_ram_gb() for p in self.pools)
 
-    def run_one_tick(self, current_tick: int, suspensions: List[Suspend],
+    def run_one_tick(self, suspensions: List[Suspend],
                      assignments: List[Assignment]) -> List[ExecutionResult]:
         '''
         Largely passing through relevant assignments to the pool they belong to.
@@ -73,7 +74,7 @@ class Executor:
         for id_ in range(self.num_pools):
             pool_suspensions = [s for s in suspensions if s.pool_id == id_]
             pool_assignments = [a for a in assignments if a.pool_id == id_]
-            pool_results = self.pools[id_].run_one_tick(current_tick, pool_suspensions, pool_assignments)
+            pool_results = self.pools[id_].run_one_tick(pool_suspensions, pool_assignments)
             results.extend(pool_results)
 
         return results

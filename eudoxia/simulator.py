@@ -11,6 +11,7 @@ from eudoxia.scheduler import Scheduler
 from eudoxia.workload import Workload, WorkloadGenerator, Pipeline
 from eudoxia.executor.assignment import Assignment
 from eudoxia.estimator import Estimator
+from eudoxia.clock import SimClock
 
 __all__ = ["run_simulator", "parse_args_with_defaults", "get_param_defaults", "SimulatorStats", "PipelineStats"]
 
@@ -20,15 +21,12 @@ class SimulatedTimeFormatter(logging.Formatter):
     """Custom formatter that adds elapsed simulation time to log
     messages.  Unlike normal logging formats based on wall-clock time,
     we want to print elapsed simulator time."""
-    def __init__(self):
-        self.elapsed_seconds = 0.0
-
-    def set_simulated_elapsed_seconds(self, seconds):
-        self.elapsed_seconds = seconds
+    def __init__(self, clock):
+        self.clock = clock
 
     def format(self, record):
         # Format: [elapsed_time] LEVEL:logger_name: message
-        return f"[{self.elapsed_seconds:6.1f}s] {record.levelname}:{record.name}: {record.getMessage()}"
+        return f"[{self.clock.now_seconds():6.1f}s] {record.levelname}:{record.name}: {record.getMessage()}"
 
 class PipelineStats(NamedTuple):
     """Statistics for a category of pipelines.  completion_count only
@@ -303,26 +301,28 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         "CPU IO ratio must be between 0 and 1"
     
     # INITIALIZATION
+    ticks_per_second = params["ticks_per_second"]
+    clock = SimClock(ticks_per_second)
+
+    # TODO: pass clock to workload (WorkloadTrace has a shadow tick counter
+    # that should use clock.now_ticks(), but workload is sometimes created
+    # before run_simulator is called, so the clock doesn't exist yet)
     if workload is None:
         workload = WorkloadGenerator(**params)
 
-    executor = Executor(**params)
-    scheduler = Scheduler(executor, **params)
+    executor = Executor(clock, **params)
+    scheduler = Scheduler(clock, executor, **params)
 
     estimator = Estimator(**params)
 
-    # Set up custom logging with elapsed time
-    ticks_per_second = params["ticks_per_second"]
-
     # Configure log handlers to use simulated time (instead of real time)
-    sim_formatter = SimulatedTimeFormatter()
+    sim_formatter = SimulatedTimeFormatter(clock)
     for handler in logging.getLogger().handlers:
         handler.setFormatter(sim_formatter)
 
-    tick_number = 0
-    max_simulation_ticks = int(params["duration"] * params["ticks_per_second"])
+    max_ticks = int(params["duration"] * params["ticks_per_second"])
     max_job_ticks = int(params["max_job_seconds"] * ticks_per_second)
-    logger.info(f"Running for {params['duration']}s or {max_simulation_ticks} ticks")
+    logger.info(f"Running for {params['duration']}s or {max_ticks} ticks")
     logger.info(f"Running with random seed {params['random_seed']}")
 
     # a pipeline may have many operators.  These can get grouped
@@ -357,14 +357,14 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     memory_consumed_percent_samples: List[float] = []
 
     # IMPORTANT!  This is the main simulation loop.
-    for tick_number in range(max_simulation_ticks):
-        sim_formatter.set_simulated_elapsed_seconds(tick_number / ticks_per_second)
+    for tick_number in range(max_ticks):
+        clock.tick()
 
         # track new work
         new_pipelines: List[Pipeline] = workload.run_one_tick()
         for p in new_pipelines:
             logger.info(f"Pipeline arrived with Priority {p.priority} and {len(p.values)} op(s)")
-            p.runtime_status().record_arrival(tick_number, max_job_ticks)
+            p.runtime_status().record_arrival(clock, max_job_ticks)
             outstanding_pipelines[p.pipeline_id] = p
             pipeline_arrivals_by_priority[p.priority] += 1
             for op in p.values:
@@ -372,7 +372,7 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
 
         # simulate scheduler/executor
         suspensions, assignments = scheduler.run_one_tick(executor_results, new_pipelines)
-        executor_results = executor.run_one_tick(tick_number, suspensions, assignments)
+        executor_results = executor.run_one_tick(suspensions, assignments)
 
         # track stats
         num_pipelines_created += len(new_pipelines)
@@ -388,21 +388,21 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
             for pipeline_id in list(outstanding_pipelines.keys()):
                 pipeline = outstanding_pipelines[pipeline_id]
                 if pipeline.runtime_status().is_pipeline_successful():
-                    pipeline.runtime_status().record_finish(tick_number)
+                    pipeline.runtime_status().record_finish()
                     latency_ticks = pipeline.runtime_status().get_latency_ticks()
                     pipeline_latencies_by_priority[pipeline.priority].append(latency_ticks)
                     del outstanding_pipelines[pipeline_id]
 
         # Optimization: periodically remove timed-out pipelines so we
         # don't keep scanning them for completion every tick.
-        if max_job_ticks > 0 and tick_number % ticks_per_second == 0:
+        if max_job_ticks > 0 and clock.now_ticks() % ticks_per_second == 0:
             for pipeline_id in list(outstanding_pipelines.keys()):
                 pipeline = outstanding_pipelines[pipeline_id]
-                if pipeline.runtime_status().has_timed_out(tick_number):
+                if pipeline.runtime_status().has_timed_out():
                     del outstanding_pipelines[pipeline_id]
 
         # log memory stats every 1 second of simulated time
-        if tick_number % ticks_per_second == 0:
+        if clock.now_ticks() % ticks_per_second == 0:
             total_ram = executor.get_total_ram_gb()
             allocated_ram = executor.get_allocated_ram_gb()
             consumed_ram = executor.get_consumed_ram_gb()

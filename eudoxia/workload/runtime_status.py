@@ -57,23 +57,25 @@ class PipelineRuntimeStatus:
         self.arrival_tick: Optional[int] = None
         self.finish_tick: Optional[int] = None
         self.max_job_ticks: int = 0
+        self.clock = None
 
         for operator in pipeline.values:
             self.operator_states[operator] = OperatorState.PENDING
             self.state_counts[OperatorState.PENDING] += 1
 
-    def record_arrival(self, tick: int, max_job_ticks: int = 0):
+    def record_arrival(self, clock, max_job_ticks: int = 0):
         """Record the tick at which this pipeline arrived."""
         assert self.arrival_tick is None, "arrival_tick already recorded"
-        self.arrival_tick = tick
+        self.clock = clock
+        self.arrival_tick = clock.now_ticks()
         self.max_job_ticks = max_job_ticks
 
-    def has_timed_out(self, current_tick: int) -> bool:
+    def has_timed_out(self) -> bool:
         """Check if this pipeline has exceeded its maximum allowed job time."""
         if self.max_job_ticks <= 0:
             return False
         assert self.arrival_tick is not None, "arrival_tick not recorded"
-        return (current_tick - self.arrival_tick) >= self.max_job_ticks
+        return (self.clock.now_ticks() - self.arrival_tick) >= self.max_job_ticks
 
     def check_transition(self, operator: 'Operator', new_state: OperatorState) -> tuple[bool, Optional[str]]:
         """
@@ -113,10 +115,10 @@ class PipelineRuntimeStatus:
         """Check if all operators completed successfully."""
         return self.state_counts[OperatorState.COMPLETED] == len(self.operator_states)
 
-    def record_finish(self, tick: int):
+    def record_finish(self):
         """Record the tick at which this pipeline finished."""
         assert self.finish_tick is None, "finish_tick already recorded"
-        self.finish_tick = tick
+        self.finish_tick = self.clock.now_ticks()
 
     def get_latency_ticks(self) -> int:
         """Get the latency in ticks (finish_tick - arrival_tick)."""

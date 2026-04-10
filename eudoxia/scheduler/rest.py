@@ -44,7 +44,6 @@ def rest_init(s):
     s.rest_addr = s.params.get("rest_scheduler_addr", "localhost:8080")
     s.rest_poll_interval = s.params.get("rest_poll_interval", 1.0)
     s.last_call_sim_time = 0.0
-    s.current_tick = 0
 
     # Track pipelines from previous ticks (some may now be complete)
     s.other_pipelines: Dict[str, Pipeline] = {}
@@ -75,13 +74,11 @@ def rest_init(s):
 def rest_scheduler(s, results: List[ExecutionResult],
                    pipelines: List[Pipeline]) -> Tuple[List[Suspend], List[Assignment]]:
     """Call external scheduler if conditions are met."""
-    s.current_tick += 1
-    ticks_per_second = s.params.get("ticks_per_second", 1000)
-    current_sim_time = s.current_tick / ticks_per_second
+    current_sim_time = s.clock.now_seconds()
     time_since_last = current_sim_time - s.last_call_sim_time
 
     # Log timing stats on final tick
-    if s.current_tick == s.final_tick:
+    if s.clock.now_ticks() == s.final_tick:
         total = time.perf_counter() - s.timing_wall_start
         logger.info(f"REST scheduler ({s.timing_call_count} calls): "
                    f"serialize={s.timing_serialize:.2f}s ({100*s.timing_serialize/total:.1f}%), "
@@ -102,7 +99,7 @@ def rest_scheduler(s, results: List[ExecutionResult],
     # Serialize payload
     t0 = time.perf_counter()
     payload = {
-        "tick": s.current_tick,
+        "tick": s.clock.now_ticks(),
         "sim_time_seconds": current_sim_time,
         "results": [r.to_dict() for r in results],
         "new_pipelines": [p.to_dict() for p in pipelines],

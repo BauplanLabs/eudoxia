@@ -10,7 +10,6 @@ from .decorators import register_scheduler_init, register_scheduler
 def naive_pipeline_init(s):
     s.waiting_queue: List[Pipeline] = []
     s.multi_operator_containers = s.params["multi_operator_containers"]
-    s.tick_number = 0
 
 @register_scheduler(key="naive")
 def naive_pipeline(s, results: List[ExecutionResult],
@@ -28,14 +27,12 @@ def naive_pipeline(s, results: List[ExecutionResult],
             - List of new assignments to provide to Executor
     """
 
-    s.tick_number += 1
-
     # this scheduler doesn't make any new decisions unless there are
     # new pipelines arriving or containers exiting, so exit fast in
     # this case
     if len(pipelines) == 0 and len(results) == 0:
         return [], []
-    
+
     for p in pipelines:
         s.waiting_queue.append(p)
 
@@ -59,7 +56,7 @@ def naive_pipeline(s, results: List[ExecutionResult],
             pipeline = s.waiting_queue.pop(0)
             status = pipeline.runtime_status()
             has_failures = status.state_counts[OperatorState.FAILED] > 0
-            if status.is_pipeline_successful() or has_failures or status.has_timed_out(s.tick_number):
+            if status.is_pipeline_successful() or has_failures or status.has_timed_out():
                 # we don't retry, so anything complete or with failures
                 # will be permanently removed from the queue
                 continue
