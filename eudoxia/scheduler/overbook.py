@@ -100,6 +100,8 @@ def make_assignments(s) -> List[Assignment]:
     for op_idx, op in enumerate(s.op_queue):
         if s.pipeline_failures[op.pipeline.pipeline_id] >= MAX_FAILURES:
             continue
+        if op.pipeline.runtime_status().has_timed_out():
+            continue
         assert op.state() in ASSIGNABLE_STATES, f"op {op.id} of pipeline {op.pipeline.pipeline_id} was in queue, but has non-assignable state, {op.state()}"
 
         assignment = try_make_assignment(s, op)

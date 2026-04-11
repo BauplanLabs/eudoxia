@@ -14,9 +14,10 @@ class ResourcePool:
 
     A resource pool is analogous to a machine on which we can run containers.
     """
-    def __init__(self, pool_id, cpu_pool, ram_pool, ticks_per_second,
+    def __init__(self, clock, pool_id, cpu_pool, ram_pool, ticks_per_second,
                  multi_operator_containers=True, allow_memory_overcommit=False, **kwargs):
         # CONFIGURATION
+        self.clock = clock
         self.pool_id = pool_id
         self.ticks_per_second = ticks_per_second
         self.tick_length_secs = 1.0 / ticks_per_second
@@ -141,6 +142,16 @@ class ResourcePool:
                 break
             victim.kill("OOM")
 
+    def _run_out_of_time_killer(self):
+        """Kill containers that have ops belonging to a timed-out pipeline."""
+        for c in self.active_containers:
+            if c.is_completed():
+                continue
+            for op in c.operators:
+                if op.pipeline.runtime_status().has_timed_out():
+                    c.kill("timeout")
+                    break
+
     def run_one_tick(self, suspensions: List[Suspend],
                      assignments: List[Assignment]) -> List[ExecutionResult]:
         """
@@ -193,6 +204,9 @@ class ResourcePool:
 
         # Kill as necessary to keep within total and individual limits
         self._run_out_of_memory_killer()
+
+        # Kill containers with ops belonging to timed-out pipelines
+        self._run_out_of_time_killer()
 
         # Process completed containers (including those killed by pool-level OOM)
         to_remove = []

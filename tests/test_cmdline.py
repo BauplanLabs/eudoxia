@@ -33,6 +33,7 @@ class TestCommandLine(unittest.TestCase):
             mock_pstats = type('PipelineStats', (), {
                 'arrival_count': 5,
                 'completion_count': 3,
+                'timeout_count': 0,
                 'mean_latency_seconds': 0.5,
                 'p99_latency_seconds': 0.8,
             })()
@@ -51,7 +52,7 @@ class TestCommandLine(unittest.TestCase):
                 'pipelines_query': mock_pstats,
                 'pipelines_interactive': mock_pstats,
                 'pipelines_batch': mock_pstats,
-                'adjusted_latency': lambda self: 0.5,
+                'adjusted_latency': lambda self, **kwargs: 0.5,
             })()
             
             # Should not raise an exception
@@ -86,6 +87,7 @@ class TestCommandLine(unittest.TestCase):
             mock_pstats = type('PipelineStats', (), {
                 'arrival_count': 1,
                 'completion_count': 1,
+                'timeout_count': 0,
                 'mean_latency_seconds': 0.1,
                 'p99_latency_seconds': 0.2,
             })()
@@ -104,7 +106,7 @@ class TestCommandLine(unittest.TestCase):
                 'pipelines_query': mock_pstats,
                 'pipelines_interactive': mock_pstats,
                 'pipelines_batch': mock_pstats,
-                'adjusted_latency': lambda self: 0.1,
+                'adjusted_latency': lambda self, **kwargs: 0.1,
             })()
 
             # Should not raise an exception

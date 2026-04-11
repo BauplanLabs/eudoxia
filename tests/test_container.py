@@ -1,4 +1,5 @@
 import pytest
+from eudoxia.clock import SimClock
 from eudoxia.executor.container import Container
 from eudoxia.executor.resource_pool import ResourcePool
 from eudoxia.executor.assignment import Assignment
@@ -32,19 +33,22 @@ def test_container_oom():
         prev_op = op
 
     # Create pool and assignment with limited RAM
-    pool = ResourcePool(pool_id=0, cpu_pool=100, ram_pool=100, ticks_per_second=1)
+    clock = SimClock(ticks_per_second=1)
+    pool = ResourcePool(clock, pool_id=0, cpu_pool=100, ram_pool=100, ticks_per_second=1)
     assignment = Assignment(
         ops=ops, cpu=10, ram=35,
         priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="oom_test"
     )
 
     # Start container via pool
+    clock.tick()
     pool.run_one_tick([], [assignment])
     container = pool.active_containers[0]
 
     # Run until completion
     ticks_executed = 1  # First tick already done
     while not container.is_completed():
+        clock.tick()
         pool.run_one_tick([], [])
         ticks_executed += 1
         assert ticks_executed <= 1000, "Container should complete within 1000 ticks"
@@ -70,16 +74,19 @@ def test_container_oom_transitions_remaining_ops_to_failed():
     op_b.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=100))
     op_c.add_segment(Segment(baseline_cpu_seconds=1.0, memory_gb=10))
 
-    pool = ResourcePool(pool_id=0, cpu_pool=100, ram_pool=100, ticks_per_second=10)
+    clock = SimClock(ticks_per_second=10)
+    pool = ResourcePool(clock, pool_id=0, cpu_pool=100, ram_pool=100, ticks_per_second=10)
     assignment = Assignment(
         ops=[op_a, op_b, op_c], cpu=10, ram=50,  # Not enough for op_b
         priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="oom_fail_test"
     )
 
     # Start container and run until OOM
+    clock.tick()
     pool.run_one_tick([], [assignment])
     container = pool.active_containers[0]
     while not container.is_completed():
+        clock.tick()
         pool.run_one_tick([], [])
 
     assert container.error == "OOM"
@@ -105,13 +112,15 @@ def test_container_immediate_oom():
     ))
 
     # Create pool and assignment with only 50GB RAM - immediate OOM
-    pool = ResourcePool(pool_id=0, cpu_pool=100, ram_pool=500, ticks_per_second=10)
+    clock = SimClock(ticks_per_second=10)
+    pool = ResourcePool(clock, pool_id=0, cpu_pool=100, ram_pool=500, ticks_per_second=10)
     assignment = Assignment(
         ops=[op], cpu=10, ram=50,  # Only 50GB available
         priority=Priority.BATCH_PIPELINE, pool_id=0, pipeline_id="immediate_oom_test"
     )
 
     # First tick creates container and runs OOM killer
+    clock.tick()
     results = pool.run_one_tick([], [assignment])
 
     # Container should be killed immediately

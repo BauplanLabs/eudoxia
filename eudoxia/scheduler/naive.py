@@ -32,7 +32,7 @@ def naive_pipeline(s, results: List[ExecutionResult],
     # this case
     if len(pipelines) == 0 and len(results) == 0:
         return [], []
-    
+
     for p in pipelines:
         s.waiting_queue.append(p)
 
@@ -54,8 +54,9 @@ def naive_pipeline(s, results: List[ExecutionResult],
         # find a pipeline with ops we can assign
         while s.waiting_queue:
             pipeline = s.waiting_queue.pop(0)
-            has_failures = pipeline.runtime_status().state_counts[OperatorState.FAILED] > 0
-            if pipeline.runtime_status().is_pipeline_successful() or has_failures:
+            status = pipeline.runtime_status()
+            has_failures = status.state_counts[OperatorState.FAILED] > 0
+            if status.is_pipeline_successful() or has_failures or status.has_timed_out():
                 # we don't retry, so anything complete or with failures
                 # will be permanently removed from the queue
                 continue

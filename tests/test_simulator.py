@@ -166,6 +166,7 @@ def test_adjusted_latency():
         "mean_memory_allocated_percent": None, "mean_memory_consumed_percent": None,
     }
     ignored_pipe_fields = {
+        "timeout_count": 0,
         "p99_latency_seconds": None,
     }
 
@@ -236,6 +237,72 @@ def test_adjusted_latency():
     result = stats.adjusted_latency(weights=weights, divide_by_completion_rate=True)
     assert stats.adjusted_latency() == float('inf')
 
+    # Scenario 6: penalty with all completed — penalty doesn't change anything.
+    # 3 jobs, all complete, mean latency 2s each, equal weights.
+    # result = (2+2+2)/3 = 2.0
+    stats = SimulatorStats(
+        pipelines_all=PipelineStats(
+            arrival_count=3, completion_count=3,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        pipelines_query=PipelineStats(
+            arrival_count=1, completion_count=1,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        pipelines_interactive=PipelineStats(
+            arrival_count=1, completion_count=1,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        pipelines_batch=PipelineStats(
+            arrival_count=1, completion_count=1,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        **ignored_sim_fields,
+    )
+    weights = {Priority.QUERY: 1, Priority.INTERACTIVE: 1, Priority.BATCH_PIPELINE: 1}
+    result = stats.adjusted_latency(weights=weights, divide_by_completion_rate=False,
+                                    unfinished_penalty_seconds=100.0)
+    assert result == pytest.approx(2.0)
+
+    # Scenario 7: 2 arrived per category, 1 completed each at 2s, penalty=10s.
+    # Equal weights: 3 completed at 2s + 3 unfinished at 10s = (6+30)/6 = 6.0
+    stats = SimulatorStats(
+        pipelines_all=PipelineStats(
+            arrival_count=6, completion_count=3,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        pipelines_query=PipelineStats(
+            arrival_count=2, completion_count=1,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        pipelines_interactive=PipelineStats(
+            arrival_count=2, completion_count=1,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        pipelines_batch=PipelineStats(
+            arrival_count=2, completion_count=1,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        **ignored_sim_fields,
+    )
+    weights = {Priority.QUERY: 1, Priority.INTERACTIVE: 1, Priority.BATCH_PIPELINE: 1}
+    result = stats.adjusted_latency(weights=weights, divide_by_completion_rate=False,
+                                    unfinished_penalty_seconds=10.0)
+    assert result == pytest.approx(6.0)
+
+    # Scenario 8: no completions, penalty=20s.  1 unfinished per category (3 total).
+    # result = (20+20+20)/3 = 20.0
+    ps_none = PipelineStats(arrival_count=1, completion_count=0,
+                            mean_latency_seconds=float('nan'), **ignored_pipe_fields)
+    stats = SimulatorStats(
+        pipelines_all=PipelineStats(arrival_count=3, completion_count=0,
+                                    mean_latency_seconds=float('nan'), **ignored_pipe_fields),
+        pipelines_query=ps_none,
+        pipelines_interactive=ps_none, pipelines_batch=ps_none,
+        **ignored_sim_fields,
+    )
+    weights = {Priority.QUERY: 1, Priority.INTERACTIVE: 1, Priority.BATCH_PIPELINE: 1}
+    result = stats.adjusted_latency(weights=weights, divide_by_completion_rate=False,
+                                    unfinished_penalty_seconds=20.0)
+    assert result == pytest.approx(20.0)
+
+    # Scenario 9: cannot use both divide_by_completion_rate and penalty
+    with pytest.raises(AssertionError):
+        stats.adjusted_latency(weights=weights, divide_by_completion_rate=True,
+                               unfinished_penalty_seconds=10.0)
+
 
 @pytest.mark.parametrize("num_pools", [1, 3])
 def test_memory_stats(num_pools):
@@ -275,3 +342,41 @@ def test_memory_stats(num_pools):
     assert stats.containers_completed == 2
     assert stats.mean_memory_allocated_percent == pytest.approx(150.0 / num_pools)
     assert stats.mean_memory_consumed_percent == pytest.approx(75.0 / num_pools)
+
+
+@pytest.mark.parametrize("max_job_seconds, expected_completions, expected_timeouts", [
+    (0, 5, 0),    # no limit: all 5 finish
+    (2.5, 2, 3),  # 1s and 2s ops finish; 3s, 4s, 5s are killed
+    (4.5, 4, 1),  # 1s, 2s, 3s, 4s finish; 5s is killed
+])
+def test_max_job_time(max_job_seconds, expected_completions, expected_timeouts):
+    """Test that pipelines exceeding max_job_seconds are killed.
+
+    Five pipelines arrive at t=0, each with a single CPU-only op taking
+    1s, 2s, 3s, 4s, 5s respectively.  The overbook scheduler assigns all
+    concurrently (1 CPU each).  Depending on max_job_seconds, only ops
+    that finish before the timeout should count as completed.
+    """
+    params = get_param_defaults()
+    params['scheduler_algo'] = 'overbook'
+    params['allow_memory_overcommit'] = True
+    params['num_pools'] = 1
+    params['cpus_per_pool'] = 5
+    params['ram_gb_per_pool'] = 100
+    params['ticks_per_second'] = 10
+    params['duration'] = 10
+    params['max_job_seconds'] = max_job_seconds
+
+    pipelines = []
+    for i in range(5):
+        p = Pipeline(f"p{i+1}", Priority.BATCH_PIPELINE)
+        op = p.new_operator()
+        op.add_segment(Segment(baseline_cpu_seconds=i + 1, cpu_scaling="const", storage_read_gb=0))
+        pipelines.append(p)
+
+    workload = MockWorkload({0: pipelines}, params['ticks_per_second'])
+    stats = run_simulator(params, workload=workload)
+
+    assert stats.pipelines_created == 5
+    assert stats.pipelines_all.completion_count == expected_completions
+    assert stats.pipelines_all.timeout_count == expected_timeouts

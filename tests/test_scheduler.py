@@ -16,14 +16,16 @@ from eudoxia.utils import Priority
 @pytest.mark.parametrize("scheduler_algo", ["priority", "priority-pool"])
 def test_retry_only_assigns_incomplete_operators(scheduler_algo):
     """When a container OOMs, only incomplete operators should be retried."""
+    clock = SimClock(ticks_per_second=10)
     executor = Executor(
+        clock,
         num_pools=2,
         cpus_per_pool=50,
         ram_gb_per_pool=500,
         ticks_per_second=10,
         multi_operator_containers=True,
     )
-    scheduler = Scheduler(SimClock(ticks_per_second=10), executor, scheduler_algo=scheduler_algo, multi_operator_containers=True)
+    scheduler = Scheduler(clock, executor, scheduler_algo=scheduler_algo, multi_operator_containers=True)
 
     # Pipeline with 2 ops
     pipeline = Pipeline("test", Priority.BATCH_PIPELINE)
@@ -63,14 +65,16 @@ def test_retry_only_assigns_incomplete_operators(scheduler_algo):
 @pytest.mark.parametrize("scheduler_algo", ["priority", "priority-pool"])
 def test_resume_only_assigns_incomplete_operators(scheduler_algo):
     """When a container resumes after suspension, only incomplete operators should be assigned."""
+    clock = SimClock(ticks_per_second=10)
     executor = Executor(
+        clock,
         num_pools=2,
         cpus_per_pool=50,
         ram_gb_per_pool=500,
         ticks_per_second=10,
         multi_operator_containers=True,
     )
-    scheduler = Scheduler(SimClock(ticks_per_second=10), executor, scheduler_algo=scheduler_algo, multi_operator_containers=True)
+    scheduler = Scheduler(clock, executor, scheduler_algo=scheduler_algo, multi_operator_containers=True)
 
     # Pipeline with 2 ops
     pipeline = Pipeline("test", Priority.BATCH_PIPELINE)
@@ -120,14 +124,16 @@ def test_resume_only_assigns_incomplete_operators(scheduler_algo):
 
 def test_op_not_double_queued_across_ticks():
     """Ops in queue but not yet assigned should not be queued again when another result arrives."""
+    clock = SimClock(ticks_per_second=10)
     executor = Executor(
+        clock,
         num_pools=1,
         cpus_per_pool=30,
         ram_gb_per_pool=30,
         ticks_per_second=10,
         multi_operator_containers=False,
     )
-    scheduler = Scheduler(SimClock(ticks_per_second=10), executor, scheduler_algo="priority", multi_operator_containers=False)
+    scheduler = Scheduler(clock, executor, scheduler_algo="priority", multi_operator_containers=False)
 
     # Pipeline: op1 has 20 children, op2 is independent
     pipeline = Pipeline("test", Priority.BATCH_PIPELINE)
@@ -178,14 +184,16 @@ def test_op_not_double_queued_across_ticks():
 
 def test_failed_op_gets_retry_stats():
     """A failed op should be queued with retry stats, not as a fresh job."""
+    clock = SimClock(ticks_per_second=10)
     executor = Executor(
+        clock,
         num_pools=1,
         cpus_per_pool=50,
         ram_gb_per_pool=50,
         ticks_per_second=10,
         multi_operator_containers=False,
     )
-    scheduler = Scheduler(SimClock(ticks_per_second=10), executor, scheduler_algo="priority", multi_operator_containers=False)
+    scheduler = Scheduler(clock, executor, scheduler_algo="priority", multi_operator_containers=False)
 
     # Single op pipeline with memory requirement higher than initial allocation will provide
     # Scheduler gives 10% of pool (5 GB), but op needs 10 GB -> OOM
@@ -214,14 +222,16 @@ def test_failed_op_gets_retry_stats():
 
 def test_partial_failure_unblocks_dependent_op():
     """When op1 completes but op2 fails in same container, op3 (dependent on op1) should be queued."""
+    clock = SimClock(ticks_per_second=10)
     executor = Executor(
+        clock,
         num_pools=1,
         cpus_per_pool=50,
         ram_gb_per_pool=50,
         ticks_per_second=10,
         multi_operator_containers=True,
     )
-    scheduler = Scheduler(SimClock(ticks_per_second=10), executor, scheduler_algo="priority", multi_operator_containers=True)
+    scheduler = Scheduler(clock, executor, scheduler_algo="priority", multi_operator_containers=True)
 
     # Pipeline: op1 (small memory) and op2 (will OOM) run together, op3 depends on op1
     #   op1 -> op3
@@ -283,7 +293,7 @@ def test_rest_scheduler_clock():
     try:
         clock = SimClock(ticks_per_second=10)
         executor = Executor(
-            num_pools=1, cpus_per_pool=10, ram_gb_per_pool=100, ticks_per_second=10,
+            clock, num_pools=1, cpus_per_pool=10, ram_gb_per_pool=100, ticks_per_second=10,
         )
         scheduler = Scheduler(
             clock, executor,

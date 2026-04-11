@@ -1,4 +1,5 @@
 import pytest
+from eudoxia.clock import SimClock
 from eudoxia.executor import Executor
 from eudoxia.executor.resource_pool import ResourcePool
 from eudoxia.executor.assignment import Assignment, Suspend
@@ -13,7 +14,9 @@ def test_resource_pool_basic():
     Create two assignments: one that will succeed and one that will OOM.
     """
     # Create resource pool with limited resources
+    clock = SimClock(ticks_per_second=10)
     pool = ResourcePool(
+        clock,
         pool_id=0,
         cpu_pool=10,
         ram_pool=100,
@@ -69,6 +72,7 @@ def test_resource_pool_basic():
     results_by_pipeline = {}
 
     for tick in range(max_ticks):
+        clock.tick()
         results = pool.run_one_tick(suspensions, assignments)
 
         # Organize results by pipeline_id
@@ -88,7 +92,9 @@ def test_resource_pool_basic():
 
 def test_resource_pool_dependencies():
     """Test that container fails when trying to run operator with unsatisfied dependencies"""
+    clock = SimClock(ticks_per_second=10)
     pool = ResourcePool(
+        clock,
         pool_id=0,
         cpu_pool=10,
         ram_pool=100,
@@ -116,6 +122,7 @@ def test_resource_pool_dependencies():
     )
 
     with pytest.raises(AssertionError, match="Dependencies not satisfied"):
+        clock.tick()
         pool.run_one_tick([], [assignment_b])
 
 
@@ -188,7 +195,9 @@ def test_memory_allocated_vs_consumed():
     """
     ram_per_pool = 100
     ticks_per_second = 10
+    clock = SimClock(ticks_per_second=ticks_per_second)
     executor = Executor(
+        clock,
         num_pools=2,
         cpus_per_pool=10,
         ram_gb_per_pool=ram_per_pool,
@@ -213,6 +222,7 @@ def test_memory_allocated_vs_consumed():
 
     completed = False
     for tick in range(1000):
+        clock.tick()
         assignments = [assignment] if tick == 0 else []
         results = executor.run_one_tick([], assignments)
 
@@ -250,7 +260,9 @@ def test_memory_overcommit_kills_highest_scorer():
     """
     ram_pool = 100
     ticks_per_second = 10
+    clock = SimClock(ticks_per_second=ticks_per_second)
     pool = ResourcePool(
+        clock,
         pool_id=0,
         cpu_pool=100,
         ram_pool=ram_pool,
@@ -287,6 +299,7 @@ def test_memory_overcommit_kills_highest_scorer():
     )
 
     # Start both containers
+    clock.tick()
     pool.run_one_tick([], [assignment_a, assignment_b])
 
     # Tick until consumption exceeds capacity
@@ -297,6 +310,7 @@ def test_memory_overcommit_kills_highest_scorer():
 
     killed_pipeline = None
     for tick in range(100):
+        clock.tick()
         results = pool.run_one_tick([], [])
         for r in results:
             if r.failed():

@@ -135,8 +135,12 @@ def priority_pool_scheduler(s, results: List[ExecutionResult],
             to_remove = []
             to_start = []
             for job in queue:
-                avail_ram = pool_stats[pool_id]["avail_ram"] 
-                avail_cpu = pool_stats[pool_id]["avail_cpu"] 
+                if job.pipeline.runtime_status().has_timed_out():
+                    to_remove.append(job)
+                    continue
+
+                avail_ram = pool_stats[pool_id]["avail_ram"]
+                avail_cpu = pool_stats[pool_id]["avail_cpu"]
 
                 # the pool is depleted so we shouldn't make any allocations
                 if avail_ram == 0 or avail_cpu == 0:

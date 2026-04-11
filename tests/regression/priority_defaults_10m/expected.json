@@ -12,24 +12,28 @@
   "pipelines_all": {
     "arrival_count": 244,
     "completion_count": 239,
+    "timeout_count": 0,
     "mean_latency_seconds": 19.434769874476988,
     "p99_latency_seconds": 32.335000000000015
   },
   "pipelines_query": {
     "arrival_count": 23,
     "completion_count": 23,
+    "timeout_count": 0,
     "mean_latency_seconds": 8.0,
     "p99_latency_seconds": 8.0
   },
   "pipelines_interactive": {
     "arrival_count": 74,
     "completion_count": 72,
+    "timeout_count": 0,
     "mean_latency_seconds": 20.062083333333334,
     "p99_latency_seconds": 31.09750000000002
   },
   "pipelines_batch": {
     "arrival_count": 147,
     "completion_count": 144,
+    "timeout_count": 0,
     "mean_latency_seconds": 20.9475,
     "p99_latency_seconds": 32.14749999999997
   }
