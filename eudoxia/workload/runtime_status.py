@@ -71,11 +71,14 @@ class PipelineRuntimeStatus:
         self.max_job_ticks = max_job_ticks
 
     def has_timed_out(self) -> bool:
-        """Check if this pipeline has exceeded its maximum allowed job time."""
+        """Check if this pipeline has exceeded its maximum allowed job time.
+        Returns False if the pipeline has already completed successfully."""
         if self.max_job_ticks <= 0:
             return False
         assert self.arrival_tick is not None, "arrival_tick not recorded"
-        return (self.clock.now_ticks() - self.arrival_tick) >= self.max_job_ticks
+        if (self.clock.now_ticks() - self.arrival_tick) < self.max_job_ticks:
+            return False
+        return not self.is_pipeline_successful()
 
     def check_transition(self, operator: 'Operator', new_state: OperatorState) -> tuple[bool, Optional[str]]:
         """

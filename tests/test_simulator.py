@@ -166,6 +166,7 @@ def test_adjusted_latency():
         "mean_memory_allocated_percent": None, "mean_memory_consumed_percent": None,
     }
     ignored_pipe_fields = {
+        "timeout_count": 0,
         "p99_latency_seconds": None,
     }
 
@@ -277,12 +278,12 @@ def test_memory_stats(num_pools):
     assert stats.mean_memory_consumed_percent == pytest.approx(75.0 / num_pools)
 
 
-@pytest.mark.parametrize("max_job_seconds, expected_completions", [
-    (0, 5),    # no limit: all 5 finish
-    (2.5, 2),  # 1s and 2s ops finish; 3s, 4s, 5s are killed
-    (4.5, 4),  # 1s, 2s, 3s, 4s finish; 5s is killed
+@pytest.mark.parametrize("max_job_seconds, expected_completions, expected_timeouts", [
+    (0, 5, 0),    # no limit: all 5 finish
+    (2.5, 2, 3),  # 1s and 2s ops finish; 3s, 4s, 5s are killed
+    (4.5, 4, 1),  # 1s, 2s, 3s, 4s finish; 5s is killed
 ])
-def test_max_job_time(max_job_seconds, expected_completions):
+def test_max_job_time(max_job_seconds, expected_completions, expected_timeouts):
     """Test that pipelines exceeding max_job_seconds are killed.
 
     Five pipelines arrive at t=0, each with a single CPU-only op taking
@@ -312,3 +313,4 @@ def test_max_job_time(max_job_seconds, expected_completions):
 
     assert stats.pipelines_created == 5
     assert stats.pipelines_all.completion_count == expected_completions
+    assert stats.pipelines_all.timeout_count == expected_timeouts

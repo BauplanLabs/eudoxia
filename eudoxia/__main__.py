@@ -58,9 +58,9 @@ def run_command(params_file, workload=None):
     print(f"  Mean memory consumed: {stats.mean_memory_consumed_percent:.1f}%")
     print()
     print("  Pipeline Stats:")
-    print("  " + "-" * 68)
-    print(f"  {'Priority':<15} {'Arrived':>10} {'Completed':>10} {'Mean (s)':>12} {'P99 (s)':>12}")
-    print("  " + "-" * 68)
+    print("  " + "-" * 80)
+    print(f"  {'Priority':<15} {'Arrived':>10} {'Completed':>10} {'Timed Out':>10} {'Mean (s)':>12} {'P99 (s)':>12}")
+    print("  " + "-" * 80)
     pipeline_stats = [
         ("All", stats.pipelines_all),
         ("Query", stats.pipelines_query),
@@ -68,8 +68,8 @@ def run_command(params_file, workload=None):
         ("Batch", stats.pipelines_batch),
     ]
     for name, pstats in pipeline_stats:
-        print(f"  {name:<15} {pstats.arrival_count:>10} {pstats.completion_count:>10} {pstats.mean_latency_seconds:>12.2f} {pstats.p99_latency_seconds:>12.2f}")
-    print("  " + "-" * 68)
+        print(f"  {name:<15} {pstats.arrival_count:>10} {pstats.completion_count:>10} {pstats.timeout_count:>10} {pstats.mean_latency_seconds:>12.2f} {pstats.p99_latency_seconds:>12.2f}")
+    print("  " + "-" * 80)
     print()
     print(f"  Adjusted latency: {stats.adjusted_latency():.2f}s")
 

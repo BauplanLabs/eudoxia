@@ -35,6 +35,7 @@ class PipelineStats(NamedTuple):
     are for the completed pipelines only."""
     arrival_count: int
     completion_count: int
+    timeout_count: int
     mean_latency_seconds: float
     p99_latency_seconds: float
 
@@ -43,12 +44,13 @@ class PipelineStats(NamedTuple):
         return {
             'arrival_count': self.arrival_count,
             'completion_count': self.completion_count,
+            'timeout_count': self.timeout_count,
             'mean_latency_seconds': self.mean_latency_seconds,
             'p99_latency_seconds': self.p99_latency_seconds,
         }
 
 
-def compute_pipeline_stats(arrival_count: int, latencies: List[int], ticks_per_second: int) -> PipelineStats:
+def compute_pipeline_stats(arrival_count: int, timeout_count: int, latencies: List[int], ticks_per_second: int) -> PipelineStats:
     """Compute PipelineStats from arrival count and list of latency ticks."""
     completion_count = len(latencies)
     if latencies:
@@ -60,6 +62,7 @@ def compute_pipeline_stats(arrival_count: int, latencies: List[int], ticks_per_s
     return PipelineStats(
         arrival_count=arrival_count,
         completion_count=completion_count,
+        timeout_count=timeout_count,
         mean_latency_seconds=mean_latency_seconds,
         p99_latency_seconds=p99_latency_seconds,
     )
@@ -352,6 +355,11 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
         Priority.INTERACTIVE: [],
         Priority.BATCH_PIPELINE: [],
     }
+    pipeline_timeouts_by_priority: Dict[Priority, int] = {
+        Priority.QUERY: 0,
+        Priority.INTERACTIVE: 0,
+        Priority.BATCH_PIPELINE: 0,
+    }
     memory_allocated_percent_samples: List[float] = []
     memory_consumed_percent_samples: List[float] = []
 
@@ -394,10 +402,11 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
 
         # Optimization: periodically remove timed-out pipelines so we
         # don't keep scanning them for completion every tick.
-        if max_job_ticks > 0 and clock.now_ticks() % ticks_per_second == 0:
+        if max_job_ticks > 0 and (clock.now_ticks() % ticks_per_second == 0 or tick_number == max_ticks - 1):
             for pipeline_id in list(outstanding_pipelines.keys()):
                 pipeline = outstanding_pipelines[pipeline_id]
                 if pipeline.runtime_status().has_timed_out():
+                    pipeline_timeouts_by_priority[pipeline.priority] += 1
                     del outstanding_pipelines[pipeline_id]
 
         # log memory stats every 1 second of simulated time
@@ -418,18 +427,22 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
 
     # Compute pipeline stats by category
     all_arrivals = sum(pipeline_arrivals_by_priority.values())
+    all_timeouts = sum(pipeline_timeouts_by_priority.values())
     all_latencies = sum(pipeline_latencies_by_priority.values(), [])
-    pipelines_all = compute_pipeline_stats(all_arrivals, all_latencies, ticks_per_second)
+    pipelines_all = compute_pipeline_stats(all_arrivals, all_timeouts, all_latencies, ticks_per_second)
     pipelines_query = compute_pipeline_stats(
         pipeline_arrivals_by_priority[Priority.QUERY],
+        pipeline_timeouts_by_priority[Priority.QUERY],
         pipeline_latencies_by_priority[Priority.QUERY],
         ticks_per_second)
     pipelines_interactive = compute_pipeline_stats(
         pipeline_arrivals_by_priority[Priority.INTERACTIVE],
+        pipeline_timeouts_by_priority[Priority.INTERACTIVE],
         pipeline_latencies_by_priority[Priority.INTERACTIVE],
         ticks_per_second)
     pipelines_batch = compute_pipeline_stats(
         pipeline_arrivals_by_priority[Priority.BATCH_PIPELINE],
+        pipeline_timeouts_by_priority[Priority.BATCH_PIPELINE],
         pipeline_latencies_by_priority[Priority.BATCH_PIPELINE],
         ticks_per_second)
 
