@@ -304,15 +304,14 @@ def run_simulator(param_input: Union[str, Dict], workload: Workload = None) -> S
     ticks_per_second = params["ticks_per_second"]
     clock = SimClock(ticks_per_second)
 
-    # TODO: pass clock to workload (WorkloadTrace has a shadow tick counter
-    # that should use clock.now_ticks(), but workload is sometimes created
-    # before run_simulator is called, so the clock doesn't exist yet)
+    # the four main components being simulated are the workload (what
+    # pipelines/ops arrive) an estimator (which adds estimates of the
+    # resource needs for ops), the scheduler (which decides when to
+    # dispatch ops), and the executor (which runs ops in containers).
     if workload is None:
         workload = WorkloadGenerator(**params)
-
     executor = Executor(clock, **params)
     scheduler = Scheduler(clock, executor, **params)
-
     estimator = Estimator(**params)
 
     # Configure log handlers to use simulated time (instead of real time)

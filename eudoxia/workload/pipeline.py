@@ -225,5 +225,6 @@ class Pipeline(Node):
             "arrival_tick": runtime.arrival_tick,
             "is_complete": runtime.is_pipeline_successful(),
             "has_failures": runtime.state_counts[OperatorState.FAILED] > 0,
+            "timed_out": runtime.has_timed_out(),
             "operators": [op.to_dict() for op in self.values],
         }

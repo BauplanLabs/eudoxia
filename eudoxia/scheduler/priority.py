@@ -162,8 +162,12 @@ def priority_scheduler(s, results: List[ExecutionResult],
         to_remove = []
         to_start = []
         for job in queue:
+            if job.pipeline.runtime_status().has_timed_out():
+                to_remove.append(job)
+                continue
+
             # checking which pool has the most available ram. MUST USE
-            # COPIED STATS as scheduler is placing assignments into pools  
+            # COPIED STATS as scheduler is placing assignments into pools
             # TODO: PARAMATERIZE THIS
             pool_id = get_pool_with_max_avail_ram(s, pool_stats)
             # all pools depleted

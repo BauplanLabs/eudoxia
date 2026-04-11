@@ -130,7 +130,7 @@ def rest_scheduler(s, results: List[ExecutionResult],
         s.other_pipelines[p.pipeline_id] = p
     for pipeline_id in list(s.other_pipelines.keys()):
         pipeline = s.other_pipelines[pipeline_id]
-        if pipeline.runtime_status().is_pipeline_successful():
+        if pipeline.runtime_status().is_pipeline_successful() or pipeline.runtime_status().has_timed_out():
             for op in pipeline.values:
                 del s.operator_lookup[str(op.id)]
             del s.other_pipelines[pipeline_id]
