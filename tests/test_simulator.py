@@ -237,6 +237,72 @@ def test_adjusted_latency():
     result = stats.adjusted_latency(weights=weights, divide_by_completion_rate=True)
     assert stats.adjusted_latency() == float('inf')
 
+    # Scenario 6: penalty with all completed — penalty doesn't change anything.
+    # 3 jobs, all complete, mean latency 2s each, equal weights.
+    # result = (2+2+2)/3 = 2.0
+    stats = SimulatorStats(
+        pipelines_all=PipelineStats(
+            arrival_count=3, completion_count=3,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        pipelines_query=PipelineStats(
+            arrival_count=1, completion_count=1,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        pipelines_interactive=PipelineStats(
+            arrival_count=1, completion_count=1,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        pipelines_batch=PipelineStats(
+            arrival_count=1, completion_count=1,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        **ignored_sim_fields,
+    )
+    weights = {Priority.QUERY: 1, Priority.INTERACTIVE: 1, Priority.BATCH_PIPELINE: 1}
+    result = stats.adjusted_latency(weights=weights, divide_by_completion_rate=False,
+                                    unfinished_penalty_seconds=100.0)
+    assert result == pytest.approx(2.0)
+
+    # Scenario 7: 2 arrived per category, 1 completed each at 2s, penalty=10s.
+    # Equal weights: 3 completed at 2s + 3 unfinished at 10s = (6+30)/6 = 6.0
+    stats = SimulatorStats(
+        pipelines_all=PipelineStats(
+            arrival_count=6, completion_count=3,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        pipelines_query=PipelineStats(
+            arrival_count=2, completion_count=1,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        pipelines_interactive=PipelineStats(
+            arrival_count=2, completion_count=1,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        pipelines_batch=PipelineStats(
+            arrival_count=2, completion_count=1,
+            mean_latency_seconds=2.0, **ignored_pipe_fields),
+        **ignored_sim_fields,
+    )
+    weights = {Priority.QUERY: 1, Priority.INTERACTIVE: 1, Priority.BATCH_PIPELINE: 1}
+    result = stats.adjusted_latency(weights=weights, divide_by_completion_rate=False,
+                                    unfinished_penalty_seconds=10.0)
+    assert result == pytest.approx(6.0)
+
+    # Scenario 8: no completions, penalty=20s.  1 unfinished per category (3 total).
+    # result = (20+20+20)/3 = 20.0
+    ps_none = PipelineStats(arrival_count=1, completion_count=0,
+                            mean_latency_seconds=float('nan'), **ignored_pipe_fields)
+    stats = SimulatorStats(
+        pipelines_all=PipelineStats(arrival_count=3, completion_count=0,
+                                    mean_latency_seconds=float('nan'), **ignored_pipe_fields),
+        pipelines_query=ps_none,
+        pipelines_interactive=ps_none, pipelines_batch=ps_none,
+        **ignored_sim_fields,
+    )
+    weights = {Priority.QUERY: 1, Priority.INTERACTIVE: 1, Priority.BATCH_PIPELINE: 1}
+    result = stats.adjusted_latency(weights=weights, divide_by_completion_rate=False,
+                                    unfinished_penalty_seconds=20.0)
+    assert result == pytest.approx(20.0)
+
+    # Scenario 9: cannot use both divide_by_completion_rate and penalty
+    with pytest.raises(AssertionError):
+        stats.adjusted_latency(weights=weights, divide_by_completion_rate=True,
+                               unfinished_penalty_seconds=10.0)
+
 
 @pytest.mark.parametrize("num_pools", [1, 3])
 def test_memory_stats(num_pools):

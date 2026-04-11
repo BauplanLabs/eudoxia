@@ -89,11 +89,11 @@ class SimulatorStats(NamedTuple):
     pipelines_interactive: PipelineStats
     pipelines_batch: PipelineStats
 
-    # TODO: add penalty option to give latency for unfinished jobs
     def adjusted_latency(
         self,
         weights: Dict[Priority, float] = None,
-        divide_by_completion_rate: bool = True
+        divide_by_completion_rate: bool = True,
+        unfinished_penalty_seconds: float = None,
     ) -> float:
         """Compute weighted mean latency across pipeline categories.
 
@@ -103,10 +103,14 @@ class SimulatorStats(NamedTuple):
                      Unspecified priorities default to weight 1.
             divide_by_completion_rate: If True, divide by completion rate to penalize
                                        incomplete pipelines. Default is True.
+            unfinished_penalty_seconds: If set, treat each unfinished pipeline
+                                        (timed out or still outstanding at end of
+                                        simulation) as having this latency.  Mutually
+                                        exclusive with divide_by_completion_rate.
 
         Returns:
             Weighted mean latency in seconds, adjusted for completion rate if requested.
-            Returns inf if no pipelines completed (higher latency is bad).
+            Returns inf if no pipelines completed (and no penalty is set).
 
         Note:
             Known limitations of this metric:
@@ -117,7 +121,10 @@ class SimulatorStats(NamedTuple):
              - A very slow request may yield a worse score than simply not running
                it. This could incentivize skipping slow requests rather than running them.
         """
-        if self.pipelines_all.completion_count == 0:
+        assert not divide_by_completion_rate or unfinished_penalty_seconds is None, \
+            "Cannot use both divide_by_completion_rate and unfinished_penalty_seconds"
+
+        if self.pipelines_all.completion_count == 0 and unfinished_penalty_seconds is None:
             return float('inf')
 
         if weights is None:
@@ -144,6 +151,12 @@ class SimulatorStats(NamedTuple):
                 weighted_count = weight * stats.completion_count
                 weighted_latency_sum += weighted_count * stats.mean_latency_seconds
                 weighted_count_sum += weighted_count
+            if unfinished_penalty_seconds is not None:
+                unfinished = stats.arrival_count - stats.completion_count
+                if unfinished > 0:
+                    weighted_count = weight * unfinished
+                    weighted_latency_sum += weighted_count * unfinished_penalty_seconds
+                    weighted_count_sum += weighted_count
             total_arrivals += stats.arrival_count
             total_completions += stats.completion_count
 

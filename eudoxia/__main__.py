@@ -9,6 +9,7 @@ import csv
 from io import StringIO
 from pathlib import Path
 from eudoxia.simulator import run_simulator, parse_args_with_defaults, get_param_defaults
+from eudoxia.utils import Priority
 from eudoxia.scheduler.decorators import SCHEDULING_ALGOS
 from eudoxia.workload.csv_io import CSVWorkloadReader, CSVWorkloadWriter, WorkloadTraceGenerator
 from eudoxia.workload import WorkloadGenerator
@@ -71,7 +72,40 @@ def run_command(params_file, workload=None):
         print(f"  {name:<15} {pstats.arrival_count:>10} {pstats.completion_count:>10} {pstats.timeout_count:>10} {pstats.mean_latency_seconds:>12.2f} {pstats.p99_latency_seconds:>12.2f}")
     print("  " + "-" * 80)
     print()
-    print(f"  Adjusted latency: {stats.adjusted_latency():.2f}s")
+
+    # print adjusted latency, which puts more weight to high-priority
+    # jobs (like query).
+    #
+    # it also penalizes the metric for unfinished work, with the
+    # approach depending on whether there is a max job time.  When
+    # max_job_seconds is set, each unfinished pipeline is assigned a
+    # penalty latency of 2x the max job time.  Otherwise, the weighted
+    # mean latency is divided by the completion rate (so finishing half
+    # the work doubles the metric).
+    weights = {
+        Priority.QUERY: 10,
+        Priority.INTERACTIVE: 5,
+        Priority.BATCH_PIPELINE: 1,
+    }
+    max_job_seconds = params["max_job_seconds"]
+    if max_job_seconds > 0:
+        penalty = 2 * max_job_seconds
+        adjusted = stats.adjusted_latency(
+            weights=weights,
+            divide_by_completion_rate=False,
+            unfinished_penalty_seconds=penalty,
+        )
+        print(f"  Adjusted latency: {adjusted:.2f}s")
+        print(f"    (weights: query={weights[Priority.QUERY]}, interactive={weights[Priority.INTERACTIVE]}, batch={weights[Priority.BATCH_PIPELINE]}; "
+              f"unfinished penalty: {penalty}s = 2 * max_job_seconds)")
+    else:
+        adjusted = stats.adjusted_latency(
+            weights=weights,
+            divide_by_completion_rate=True,
+        )
+        print(f"  Adjusted latency: {adjusted:.2f}s")
+        print(f"    (weights: query={weights[Priority.QUERY]}, interactive={weights[Priority.INTERACTIVE]}, batch={weights[Priority.BATCH_PIPELINE]}; "
+              f"divided by completion rate)")
 
 
 def gentrace_command(params_file, output_file, force=False):

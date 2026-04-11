@@ -52,7 +52,7 @@ class TestCommandLine(unittest.TestCase):
                 'pipelines_query': mock_pstats,
                 'pipelines_interactive': mock_pstats,
                 'pipelines_batch': mock_pstats,
-                'adjusted_latency': lambda self: 0.5,
+                'adjusted_latency': lambda self, **kwargs: 0.5,
             })()
             
             # Should not raise an exception
@@ -106,7 +106,7 @@ class TestCommandLine(unittest.TestCase):
                 'pipelines_query': mock_pstats,
                 'pipelines_interactive': mock_pstats,
                 'pipelines_batch': mock_pstats,
-                'adjusted_latency': lambda self: 0.1,
+                'adjusted_latency': lambda self, **kwargs: 0.1,
             })()
 
             # Should not raise an exception
