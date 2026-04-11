@@ -275,3 +275,40 @@ def test_memory_stats(num_pools):
     assert stats.containers_completed == 2
     assert stats.mean_memory_allocated_percent == pytest.approx(150.0 / num_pools)
     assert stats.mean_memory_consumed_percent == pytest.approx(75.0 / num_pools)
+
+
+@pytest.mark.parametrize("max_job_seconds, expected_completions", [
+    (0, 5),    # no limit: all 5 finish
+    (2.5, 2),  # 1s and 2s ops finish; 3s, 4s, 5s are killed
+    (4.5, 4),  # 1s, 2s, 3s, 4s finish; 5s is killed
+])
+def test_max_job_time(max_job_seconds, expected_completions):
+    """Test that pipelines exceeding max_job_seconds are killed.
+
+    Five pipelines arrive at t=0, each with a single CPU-only op taking
+    1s, 2s, 3s, 4s, 5s respectively.  The overbook scheduler assigns all
+    concurrently (1 CPU each).  Depending on max_job_seconds, only ops
+    that finish before the timeout should count as completed.
+    """
+    params = get_param_defaults()
+    params['scheduler_algo'] = 'overbook'
+    params['allow_memory_overcommit'] = True
+    params['num_pools'] = 1
+    params['cpus_per_pool'] = 5
+    params['ram_gb_per_pool'] = 100
+    params['ticks_per_second'] = 10
+    params['duration'] = 10
+    params['max_job_seconds'] = max_job_seconds
+
+    pipelines = []
+    for i in range(5):
+        p = Pipeline(f"p{i+1}", Priority.BATCH_PIPELINE)
+        op = p.new_operator()
+        op.add_segment(Segment(baseline_cpu_seconds=i + 1, cpu_scaling="const", storage_read_gb=0))
+        pipelines.append(p)
+
+    workload = MockWorkload({0: pipelines}, params['ticks_per_second'])
+    stats = run_simulator(params, workload=workload)
+
+    assert stats.pipelines_created == 5
+    assert stats.pipelines_all.completion_count == expected_completions
